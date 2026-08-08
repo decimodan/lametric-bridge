@@ -64,12 +64,28 @@ function candidateBases(host: string): string[] {
   if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) {
     return [cleaned];
   }
-  return [
-    `https://${cleaned}:4343`,
-    `https://${cleaned}`,
-    `http://${cleaned}:8080`,
-    `http://${cleaned}`,
-  ];
+  // Official local API: HTTPS :4343 and HTTP :8080.
+  // Bare :80/:443 return misleading 401s and are not used.
+  return [`https://${cleaned}:4343`, `http://${cleaned}:8080`];
+}
+
+function formatLametricError(status: number, base: string, text: string): string {
+  const snippet = text.slice(0, 300);
+  try {
+    const parsed = JSON.parse(text) as {
+      errors?: Array<{ message?: string }>;
+    };
+    const msg = parsed.errors?.[0]?.message;
+    if (msg) {
+      if (/only notifications with priority ['"]critical['"]/i.test(msg)) {
+        return `${msg} (el reloj está en modo silencioso / solo críticas; usa prioridad critical o desactiva DND en LaMetric)`;
+      }
+      return msg;
+    }
+  } catch {
+    // not JSON
+  }
+  return `HTTP ${status} from ${base}: ${snippet}`;
 }
 
 async function touchLastSeen(): Promise<void> {
@@ -107,7 +123,7 @@ export async function testConnection(): Promise<{ ok: boolean; detail: string }>
         await touchLastSeen();
         return { ok: true, detail: `Connected via ${base}` };
       }
-      lastError = `HTTP ${res.status} from ${base}`;
+      lastError = formatLametricError(res.status, base, res.text);
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
@@ -174,7 +190,7 @@ export async function sendNotification(
         await touchLastSeen();
         return { ok: true, detail: `Sent via ${base}` };
       }
-      lastError = `HTTP ${res.status} from ${base}: ${res.text.slice(0, 200)}`;
+      lastError = formatLametricError(res.status, base, res.text);
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
     }
