@@ -14,6 +14,7 @@
     </div>
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="device" class="active">LaMetric</button>
+      <button type="button" data-tab="queue">Cola</button>
       <button type="button" data-tab="apps">Apps</button>
       <button type="button" data-tab="channels">Canales</button>
       <button type="button" data-tab="ha">Home Assistant</button>
@@ -64,6 +65,46 @@
         </div>
         <p class="msg" id="notifyMsg"></p>
       </form>
+    </section>
+
+    <section id="tab-queue" class="panel">
+      <h1>Cola → LaMetric</h1>
+      <p class="hint">Elegí una entidad mapeada, prioridad, y encolala. La cola se procesa por prioridad (critical → warning → info).</p>
+
+      <div class="queue-layout">
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin:0">Entidades</h2>
+            <button type="button" id="refreshQueueEntities" class="secondary">Actualizar estados</button>
+          </div>
+          <p class="msg" id="queueMsg"></p>
+          <ul id="queueEntityList" class="list"></ul>
+        </div>
+
+        <div>
+          <div class="row" style="justify-content:space-between">
+            <h2 style="margin:0">Cola <span class="meta" id="queueSizeLabel">(0)</span></h2>
+            <button type="button" id="clearQueueBtn" class="danger">Vaciar cola</button>
+          </div>
+          <div class="priority-board" id="priorityBoard">
+            <div class="priority-lane" data-priority="critical">
+              <header>critical</header>
+              <ul class="lane-list" id="lane-critical"></ul>
+            </div>
+            <div class="priority-lane" data-priority="warning">
+              <header>warning</header>
+              <ul class="lane-list" id="lane-warning"></ul>
+            </div>
+            <div class="priority-lane" data-priority="info">
+              <header>info</header>
+              <ul class="lane-list" id="lane-info"></ul>
+            </div>
+          </div>
+
+          <h2>Últimos envíos</h2>
+          <ul id="queueRecentList" class="list compact"></ul>
+        </div>
+      </div>
     </section>
 
     <section id="tab-apps" class="panel">

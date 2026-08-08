@@ -26,6 +26,12 @@ $$("#tabs button").forEach((btn) => {
     $$(".panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
+    if (btn.dataset.tab === "queue") {
+      loadQueueTab().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
+      startQueuePolling();
+    } else {
+      stopQueuePolling();
+    }
   });
 });
 
@@ -116,6 +122,125 @@ $("#notifyTest").addEventListener("click", async () => {
     });
   } catch (err) {
     setMsg($("#notifyMsg"), err.message, "error");
+  }
+});
+
+/* Queue / send entities */
+let queuePollTimer = null;
+
+function startQueuePolling() {
+  stopQueuePolling();
+  queuePollTimer = setInterval(() => {
+    loadQueueBoard().catch(() => {});
+  }, 2000);
+}
+
+function stopQueuePolling() {
+  if (queuePollTimer) {
+    clearInterval(queuePollTimer);
+    queuePollTimer = null;
+  }
+}
+
+async function loadQueueEntities() {
+  const { entities } = await api("/panel/api/ha/previews");
+  const list = $("#queueEntityList");
+  list.innerHTML = "";
+  if (!entities.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `<div class="meta">No hay entidades mapeadas. Agregalas en la pestaña Home Assistant.</div>`;
+    list.appendChild(li);
+    return;
+  }
+  for (const ent of entities) {
+    const li = document.createElement("li");
+    const preview = ent.preview || "(sin estado)";
+    const name = ent.friendly_name || ent.entity_id;
+    li.innerHTML = `
+      <div style="flex:1">
+        <strong>${escapeHtml(name)}</strong>
+        <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)}</div>
+        <div style="margin-top:0.35rem">${escapeHtml(preview)}</div>
+      </div>
+      <div class="entity-send">
+        <select data-prio-for="${ent.id}">
+          <option value="info">info</option>
+          <option value="warning">warning</option>
+          <option value="critical" selected>critical</option>
+        </select>
+        <button type="button" data-send-ent="${ent.id}">Encolar</button>
+      </div>`;
+    list.appendChild(li);
+  }
+  list.querySelectorAll("[data-send-ent]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.sendEnt;
+      const sel = list.querySelector(`[data-prio-for="${id}"]`);
+      const priority = sel ? sel.value : "critical";
+      try {
+        btn.disabled = true;
+        const r = await api(`/panel/api/ha/entities/${id}/send`, {
+          method: "POST",
+          body: JSON.stringify({ priority, sound: priority === "critical" }),
+        });
+        setMsg($("#queueMsg"), `${r.detail}: ${r.text || ""}`, "ok");
+        await loadQueueBoard();
+        refreshStatus();
+      } catch (err) {
+        setMsg($("#queueMsg"), err.message, "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
+async function loadQueueBoard() {
+  const data = await api("/panel/api/queue");
+  $("#queueSizeLabel").textContent = `(${data.size})`;
+  for (const p of ["critical", "warning", "info"]) {
+    const lane = $(`#lane-${p}`);
+    lane.innerHTML = "";
+    const items = data.items.filter((i) => i.priority === p);
+    for (const item of items) {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <strong>#${item.position} ${escapeHtml(item.text)}</strong>
+        <div class="meta">${escapeHtml(item.source)} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
+      lane.appendChild(li);
+    }
+  }
+
+  const recent = $("#queueRecentList");
+  recent.innerHTML = "";
+  for (const log of data.recent || []) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div>
+        <strong>[${escapeHtml(log.status)}] ${escapeHtml(log.text)}</strong>
+        <div class="meta">${escapeHtml(log.priority)} · ${escapeHtml(log.source)} · ${escapeHtml(log.detail || "")}</div>
+      </div>`;
+    recent.appendChild(li);
+  }
+}
+
+async function loadQueueTab() {
+  await loadQueueEntities();
+  await loadQueueBoard();
+}
+
+$("#refreshQueueEntities").addEventListener("click", () => {
+  loadQueueEntities().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
+});
+
+$("#clearQueueBtn").addEventListener("click", async () => {
+  try {
+    const r = await api("/panel/api/queue", { method: "DELETE" });
+    setMsg($("#queueMsg"), `Cola vaciada (${r.cleared})`, "ok");
+    await loadQueueBoard();
+    refreshStatus();
+  } catch (err) {
+    setMsg($("#queueMsg"), err.message, "error");
   }
 });
 

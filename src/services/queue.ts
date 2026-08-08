@@ -73,6 +73,31 @@ export function enqueue(message: Message): void {
   ensureWorker();
 }
 
+export function listQueue(): Array<{
+  text: string;
+  icon?: string;
+  priority: string;
+  source: string;
+  enqueuedAt: number;
+  position: number;
+}> {
+  sortQueue();
+  return queue.map((item, index) => ({
+    text: item.message.text,
+    icon: item.message.icon,
+    priority: item.message.priority ?? "info",
+    source: item.message.source,
+    enqueuedAt: item.enqueuedAt,
+    position: index + 1,
+  }));
+}
+
+export function clearQueue(): number {
+  const n = queue.length;
+  queue.length = 0;
+  return n;
+}
+
 async function processOne(): Promise<void> {
   const item = queue.shift();
   if (!item) return;

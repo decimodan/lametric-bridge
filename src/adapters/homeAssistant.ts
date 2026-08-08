@@ -3,7 +3,7 @@ import WebSocket from "ws";
 import { query, type HaConfigRow, type HaEntityRow } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../db/crypto.js";
 import { upsertFrame } from "../services/channels.js";
-import { enqueue } from "../services/queue.js";
+import { enqueue, queueSize } from "../services/queue.js";
 import { renderTemplate } from "../services/render.js";
 
 export type HaConfig = {
@@ -191,6 +191,109 @@ async function handleState(
   if (mapping.channel_id) {
     await upsertFrame(mapping.channel_id, text, mapping.icon);
   }
+}
+
+/** Render current HA state for a mapped entity and enqueue a notification. */
+export async function enqueueHaEntity(
+  entityIdOrRowId: string,
+  priority: "info" | "warning" | "critical" = "info",
+  sound = false,
+): Promise<{ ok: boolean; detail: string; text?: string; queue?: number }> {
+  const byId = await query<HaEntityRow>(
+    "SELECT * FROM ha_entities WHERE id = $1 OR entity_id = $2",
+    [entityIdOrRowId, entityIdOrRowId],
+  );
+  const mapping = byId.rows[0];
+  if (!mapping) {
+    return { ok: false, detail: "Entity mapping not found" };
+  }
+
+  const states = await fetchHaStates();
+  const state = states.find((s) => s.entity_id === mapping.entity_id);
+  if (!state) {
+    return {
+      ok: false,
+      detail: `State not found in HA for ${mapping.entity_id}`,
+    };
+  }
+
+  const text = renderTemplate(mapping.template, {
+    state: state.state,
+    name: String(state.attributes?.friendly_name ?? mapping.entity_id),
+    unit: String(state.attributes?.unit_of_measurement ?? ""),
+    entity_id: mapping.entity_id,
+  }).trim();
+
+  if (!text) {
+    return { ok: false, detail: "Rendered template is empty" };
+  }
+
+  enqueue({
+    text,
+    icon: mapping.icon,
+    priority,
+    sound,
+    source: `panel:ha:${mapping.entity_id}`,
+  });
+
+  return {
+    ok: true,
+    detail: `Queued (${priority})`,
+    text,
+    queue: queueSize(),
+  };
+}
+
+export async function previewHaEntities(): Promise<
+  Array<{
+    id: string;
+    entity_id: string;
+    mode: string;
+    template: string;
+    icon: string;
+    enabled: boolean;
+    state: string | null;
+    friendly_name: string | null;
+    preview: string | null;
+  }>
+> {
+  const entities = await listHaEntities();
+  let states: Array<{
+    entity_id: string;
+    state: string;
+    attributes: Record<string, unknown>;
+  }> = [];
+  try {
+    states = await fetchHaStates();
+  } catch {
+    states = [];
+  }
+  const byId = new Map(states.map((s) => [s.entity_id, s]));
+
+  return entities.map((ent) => {
+    const s = byId.get(ent.entity_id);
+    const preview = s
+      ? renderTemplate(ent.template, {
+          state: s.state,
+          name: String(s.attributes?.friendly_name ?? ent.entity_id),
+          unit: String(s.attributes?.unit_of_measurement ?? ""),
+          entity_id: ent.entity_id,
+        }).trim()
+      : null;
+    return {
+      id: ent.id,
+      entity_id: ent.entity_id,
+      mode: ent.mode,
+      template: ent.template,
+      icon: ent.icon,
+      enabled: ent.enabled,
+      state: s?.state ?? null,
+      friendly_name: s
+        ? String(s.attributes?.friendly_name ?? "") || null
+        : null,
+      preview,
+    };
+  });
 }
 
 function scheduleReconnect(): void {

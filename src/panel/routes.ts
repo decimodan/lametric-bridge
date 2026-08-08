@@ -6,10 +6,12 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   deleteHaEntity,
+  enqueueHaEntity,
   fetchHaStates,
   getHaConfig,
   haStatus,
   listHaEntities,
+  previewHaEntities,
   restartHomeAssistant,
   saveHaConfig,
   testHaConnection,
@@ -35,7 +37,13 @@ import {
   updateChannel,
   upsertFrame,
 } from "../services/channels.js";
-import { listNotifyLog, logNotify, queueSize } from "../services/queue.js";
+import {
+  clearQueue,
+  listNotifyLog,
+  listQueue,
+  logNotify,
+  queueSize,
+} from "../services/queue.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -90,6 +98,16 @@ function registerPanelApi(app: FastifyInstance): void {
 
   app.get("/panel/api/logs", async () => ({
     logs: await listNotifyLog(100),
+  }));
+
+  app.get("/panel/api/queue", async () => ({
+    size: queueSize(),
+    items: listQueue(),
+    recent: await listNotifyLog(20),
+  }));
+
+  app.delete("/panel/api/queue", async () => ({
+    cleared: clearQueue(),
   }));
 
   app.get("/panel/api/device", async () => {
@@ -334,5 +352,36 @@ function registerPanelApi(app: FastifyInstance): void {
       return reply.code(404).send({ error: "Not found" });
     }
     return { ok: true };
+  });
+
+  app.get("/panel/api/ha/previews", async () => ({
+    entities: await previewHaEntities(),
+  }));
+
+  app.post("/panel/api/ha/entities/:id/send", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const result = await enqueueHaEntity(
+        id,
+        parsed.data.priority ?? "info",
+        parsed.data.sound ?? false,
+      );
+      if (!result.ok) return reply.code(400).send(result);
+      return result;
+    } catch (err) {
+      return reply.code(502).send({
+        ok: false,
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 }
