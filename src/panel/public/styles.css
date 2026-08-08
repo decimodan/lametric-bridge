@@ -262,6 +262,75 @@ code {
   padding: 0.35rem 0.2rem;
 }
 
+.icon-selected-bar {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.icon-selected-bar img {
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 0.55rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.icon-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  min-height: 96px;
+}
+
+.icon-card:hover,
+.icon-card.selected {
+  border-color: var(--accent);
+}
+
+.icon-card img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 4px;
+}
+
+.icon-card .code {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+.icon-card .title {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .entity-send {
   display: flex;
   flex-wrap: wrap;

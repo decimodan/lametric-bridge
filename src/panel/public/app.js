@@ -32,6 +32,9 @@ $$("#tabs button").forEach((btn) => {
     } else {
       stopQueuePolling();
     }
+    if (btn.dataset.tab === "icons") {
+      loadIcons().catch((e) => setMsg($("#iconMsg"), e.message, "error"));
+    }
   });
 });
 
@@ -105,6 +108,7 @@ $("#notifyForm").addEventListener("submit", async (e) => {
   try {
     await sendToLametric({
       text: String(fd.get("text") || "").trim(),
+      icon: String(fd.get("icon") || "").trim() || undefined,
       priority: fd.get("priority") || "info",
       sound: fd.get("sound") === "on",
     });
@@ -244,6 +248,134 @@ $("#clearQueueBtn").addEventListener("click", async () => {
   }
 });
 
+/* Icons gallery */
+let iconPage = 0;
+let iconQuery = "";
+let selectedIcon = null;
+let lastIconInput = null;
+
+document.addEventListener("focusin", (e) => {
+  const t = e.target;
+  if (t && t.matches && t.matches("input.icon-field, input[name=icon]")) {
+    lastIconInput = t;
+  }
+});
+
+function setSelectedIcon(icon) {
+  selectedIcon = icon;
+  $("#iconSelectedCode").textContent = icon ? icon.code : "ninguno";
+  $("#iconSelectedTitle").textContent = icon
+    ? `${icon.title}${icon.category ? ` · ${icon.category}` : ""}`
+    : "Elegí un icono de la grilla";
+  const img = $("#iconSelectedThumb");
+  if (icon?.thumb) {
+    img.src = icon.thumb;
+    img.hidden = false;
+  } else {
+    img.hidden = true;
+    img.removeAttribute("src");
+  }
+  $("#iconApplyBtn").disabled = !icon;
+  $("#iconCopyBtn").disabled = !icon;
+  $$(".icon-card").forEach((el) => {
+    el.classList.toggle("selected", icon && el.dataset.code === icon.code);
+  });
+  if (icon && lastIconInput) {
+    lastIconInput.value = icon.code;
+  }
+}
+
+function applySelectedIconToFields() {
+  if (!selectedIcon) return;
+  const fields = $$("input.icon-field, input[name=icon]");
+  if (lastIconInput && fields.includes(lastIconInput)) {
+    lastIconInput.value = selectedIcon.code;
+    setMsg($("#iconMsg"), `Aplicado ${selectedIcon.code} al campo activo`, "ok");
+    return;
+  }
+  if (fields[0]) {
+    fields[0].value = selectedIcon.code;
+    setMsg($("#iconMsg"), `Aplicado ${selectedIcon.code}`, "ok");
+  }
+}
+
+async function loadIcons(page = iconPage) {
+  iconPage = Math.max(0, page);
+  setMsg($("#iconMsg"), "Cargando iconos…");
+  const params = new URLSearchParams({
+    page: String(iconPage),
+    count: "48",
+  });
+  if (iconQuery) params.set("q", iconQuery);
+  const data = await api(`/panel/api/icons?${params}`);
+  const grid = $("#iconGrid");
+  grid.innerHTML = "";
+  for (const icon of data.icons || []) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "icon-card";
+    btn.dataset.code = icon.code;
+    btn.innerHTML = `
+      <img src="${escapeHtml(icon.thumb)}" alt="${escapeHtml(icon.title)}" loading="lazy" width="40" height="40" />
+      <span class="code">${escapeHtml(icon.code)}</span>
+      <span class="title" title="${escapeHtml(icon.title)}">${escapeHtml(icon.title)}</span>`;
+    btn.addEventListener("click", () => setSelectedIcon(icon));
+    grid.appendChild(btn);
+  }
+  if (selectedIcon) {
+    $$(".icon-card").forEach((el) => {
+      el.classList.toggle("selected", el.dataset.code === selectedIcon.code);
+    });
+  }
+  const total = data.total || 0;
+  const pageSize = 48;
+  const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  $("#iconPageLabel").textContent = iconQuery
+    ? `busqueda · pág ${iconPage + 1} · ${data.icons.length} resultados`
+    : `populares · pág ${iconPage + 1} / ${maxPage + 1}`;
+  $("#iconPrevBtn").disabled = iconPage <= 0;
+  $("#iconNextBtn").disabled = iconPage >= maxPage || data.icons.length === 0;
+  setMsg($("#iconMsg"), data.icons.length ? "" : "Sin resultados");
+}
+
+$("#iconSearchBtn").addEventListener("click", () => {
+  iconQuery = $("#iconSearch").value.trim();
+  loadIcons(0).catch((e) => setMsg($("#iconMsg"), e.message, "error"));
+});
+
+$("#iconSearch").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    $("#iconSearchBtn").click();
+  }
+});
+
+$("#iconPopularBtn").addEventListener("click", () => {
+  iconQuery = "";
+  $("#iconSearch").value = "";
+  loadIcons(0).catch((e) => setMsg($("#iconMsg"), e.message, "error"));
+});
+
+$("#iconPrevBtn").addEventListener("click", () => {
+  loadIcons(iconPage - 1).catch((e) => setMsg($("#iconMsg"), e.message, "error"));
+});
+
+$("#iconNextBtn").addEventListener("click", () => {
+  loadIcons(iconPage + 1).catch((e) => setMsg($("#iconMsg"), e.message, "error"));
+});
+
+$("#iconApplyBtn").addEventListener("click", () => applySelectedIconToFields());
+
+$("#iconCopyBtn").addEventListener("click", async () => {
+  if (!selectedIcon) return;
+  try {
+    await navigator.clipboard.writeText(selectedIcon.code);
+    setMsg($("#iconMsg"), `Copiado ${selectedIcon.code}`, "ok");
+  } catch {
+    setMsg($("#iconMsg"), selectedIcon.code, "ok");
+  }
+});
+
 /* Apps */
 async function loadApps() {
   const { apps } = await api("/panel/api/apps");
@@ -316,7 +448,7 @@ async function loadChannels() {
         <div class="meta">order ${ch.sort_order} · ${ch.enabled ? "on" : "off"} · ${escapeHtml(ch.id)}</div>
         <form class="row frame-form" data-id="${ch.id}">
           <input name="text" placeholder="Texto del frame" required />
-          <input name="icon" value="a2867" style="width:7rem" />
+          <input name="icon" class="icon-field" value="a2867" style="width:7rem" />
           <button type="submit">Set frame</button>
         </form>
       </div>
@@ -414,7 +546,7 @@ async function loadHa() {
             </select>
           </label>
           <label>Icon
-            <input name="icon" value="${escapeHtml(ent.icon)}" style="width:7rem" />
+            <input name="icon" class="icon-field" value="${escapeHtml(ent.icon)}" style="width:7rem" />
           </label>
           <button type="submit">Guardar texto</button>
         </div>

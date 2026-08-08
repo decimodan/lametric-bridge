@@ -4,6 +4,7 @@ import fastifyBasicAuth from "@fastify/basic-auth";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { searchLametricIcons } from "../adapters/lametricIcons.js";
 import {
   deleteHaEntity,
   enqueueHaEntity,
@@ -99,6 +100,26 @@ function registerPanelApi(app: FastifyInstance): void {
   app.get("/panel/api/logs", async () => ({
     logs: await listNotifyLog(100),
   }));
+
+  app.get("/panel/api/icons", async (request, reply) => {
+    const query = request.query as {
+      q?: string;
+      page?: string;
+      count?: string;
+    };
+    try {
+      const result = await searchLametricIcons({
+        q: query.q,
+        page: query.page ? Number(query.page) : 0,
+        count: query.count ? Number(query.count) : 48,
+      });
+      return result;
+    } catch (err) {
+      return reply.code(502).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
 
   app.get("/panel/api/queue", async () => ({
     size: queueSize(),

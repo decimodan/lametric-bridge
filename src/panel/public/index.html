@@ -15,6 +15,7 @@
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="device" class="active">LaMetric</button>
       <button type="button" data-tab="queue">Cola</button>
+      <button type="button" data-tab="icons">Iconos</button>
       <button type="button" data-tab="apps">Apps</button>
       <button type="button" data-tab="channels">Canales</button>
       <button type="button" data-tab="ha">Home Assistant</button>
@@ -47,6 +48,9 @@
           <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
         </label>
         <div class="row">
+          <label>Icono
+            <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
+          </label>
           <label>Prioridad
             <select name="priority">
               <option value="info">info</option>
@@ -65,6 +69,32 @@
         </div>
         <p class="msg" id="notifyMsg"></p>
       </form>
+    </section>
+
+    <section id="tab-icons" class="panel">
+      <h1>Iconos LaMetric</h1>
+      <p class="hint">Buscá y hacé clic para seleccionar. El código (<code>a123</code> / <code>i123</code>) se aplica al último campo de icono enfocado o al seleccionado abajo.</p>
+      <div class="row icon-selected-bar" id="iconSelectedBar">
+        <img id="iconSelectedThumb" alt="" width="40" height="40" hidden />
+        <div>
+          <strong id="iconSelectedCode">ninguno</strong>
+          <div class="meta" id="iconSelectedTitle">Elegí un icono de la grilla</div>
+        </div>
+        <button type="button" id="iconApplyBtn" class="secondary" disabled>Aplicar a campos</button>
+        <button type="button" id="iconCopyBtn" class="secondary" disabled>Copiar código</button>
+      </div>
+      <div class="row">
+        <input id="iconSearch" placeholder="Buscar: weather, temp, home…" />
+        <button type="button" id="iconSearchBtn">Buscar</button>
+        <button type="button" id="iconPopularBtn" class="secondary">Populares</button>
+      </div>
+      <p class="msg" id="iconMsg"></p>
+      <div class="icon-grid" id="iconGrid"></div>
+      <div class="row">
+        <button type="button" id="iconPrevBtn" class="secondary" disabled>Anterior</button>
+        <span class="meta" id="iconPageLabel">—</span>
+        <button type="button" id="iconNextBtn" class="secondary" disabled>Siguiente</button>
+      </div>
     </section>
 
     <section id="tab-queue" class="panel">
@@ -166,9 +196,9 @@
           <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
         </label>
         <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
-        <label>Icon
-          <input name="icon" value="a2867" />
-        </label>
+          <label>Icon
+            <input name="icon" class="icon-field" value="a2867" />
+          </label>
         <label>Canal (para mode=frame)
           <select name="channel_id" id="haChannelSelect">
             <option value="">—</option>
