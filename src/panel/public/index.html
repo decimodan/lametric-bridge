@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>lametric-bridge</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="brand">lametric-bridge</p>
+      <p class="sub" id="statusLine">Cargando…</p>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button type="button" data-tab="device" class="active">LaMetric</button>
+      <button type="button" data-tab="apps">Apps</button>
+      <button type="button" data-tab="channels">Canales</button>
+      <button type="button" data-tab="ha">Home Assistant</button>
+      <button type="button" data-tab="logs">Logs</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="tab-device" class="panel active">
+      <h1>Dispositivo LaMetric</h1>
+      <p class="hint">IP o host del reloj en la LAN y API key de developer (local).</p>
+      <form id="deviceForm" class="stack">
+        <label>Host / IP
+          <input name="host" placeholder="192.168.1.50" required />
+        </label>
+        <label>API key
+          <input name="apiKey" type="password" placeholder="device API key" required />
+        </label>
+        <div class="row">
+          <button type="submit">Guardar</button>
+          <button type="button" id="deviceTest" class="secondary">Probar conexión</button>
+        </div>
+        <p class="msg" id="deviceMsg"></p>
+      </form>
+    </section>
+
+    <section id="tab-apps" class="panel">
+      <h1>Aplicaciones</h1>
+      <p class="hint">Cada app de la LAN usa un API key en el header <code>X-API-Key</code>.</p>
+      <form id="appForm" class="row">
+        <input name="name" placeholder="Nombre de la app" required />
+        <button type="submit">Crear</button>
+      </form>
+      <p class="msg" id="appMsg"></p>
+      <ul id="appList" class="list"></ul>
+    </section>
+
+    <section id="tab-channels" class="panel">
+      <h1>Canales / frames</h1>
+      <p class="hint">Frames persistentes expuestos en <code>/lametric/frames</code> para el Indicator App.</p>
+      <form id="channelForm" class="row">
+        <input name="name" placeholder="Nombre del canal" required />
+        <input name="sort_order" type="number" value="0" style="width:6rem" />
+        <button type="submit">Crear canal</button>
+      </form>
+      <ul id="channelList" class="list"></ul>
+    </section>
+
+    <section id="tab-ha" class="panel">
+      <h1>Home Assistant</h1>
+      <form id="haForm" class="stack">
+        <label>URL
+          <input name="baseUrl" placeholder="http://192.168.1.10:8123" required />
+        </label>
+        <label>Long-lived access token
+          <input name="token" type="password" required />
+        </label>
+        <div class="row">
+          <button type="submit">Guardar</button>
+          <button type="button" id="haTest" class="secondary">Probar</button>
+        </div>
+        <p class="msg" id="haMsg"></p>
+      </form>
+
+      <h2>Entidades</h2>
+      <div class="row">
+        <input id="haSearch" placeholder="Buscar entidad…" />
+        <button type="button" id="haSearchBtn" class="secondary">Buscar</button>
+      </div>
+      <ul id="haStates" class="list compact"></ul>
+
+      <form id="haEntityForm" class="stack">
+        <label>Entity ID
+          <input name="entity_id" required placeholder="sensor.temperature" />
+        </label>
+        <label>Modo
+          <select name="mode">
+            <option value="frame">Frame persistente</option>
+            <option value="notify">Notificar al cambiar</option>
+          </select>
+        </label>
+        <label>Template
+          <input name="template" value="{{ name }}: {{ state }}{{ unit }}" />
+        </label>
+        <label>Icon
+          <input name="icon" value="a2867" />
+        </label>
+        <label>Canal (para mode=frame)
+          <select name="channel_id" id="haChannelSelect">
+            <option value="">—</option>
+          </select>
+        </label>
+        <button type="submit">Agregar entidad</button>
+      </form>
+      <ul id="haEntityList" class="list"></ul>
+    </section>
+
+    <section id="tab-logs" class="panel">
+      <h1>Últimas notificaciones</h1>
+      <button type="button" id="refreshLogs" class="secondary">Actualizar</button>
+      <ul id="logList" class="list"></ul>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

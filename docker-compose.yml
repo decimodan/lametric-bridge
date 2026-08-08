@@ -1,0 +1,12 @@
+services:
+  lametric-bridge:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      PANEL_USER: admin
+      PANEL_PASSWORD: changeme
+      CONFIG_SECRET: local-dev-secret-change-me
+    restart: unless-stopped

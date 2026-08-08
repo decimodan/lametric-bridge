@@ -1,0 +1,38 @@
+{
+  "name": "lametric-bridge",
+  "version": "1.0.0",
+  "description": "Bridge between local apps / Home Assistant and a LaMetric Time device",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && mkdir -p dist/panel && cp -R src/panel/public dist/panel/public",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/decimodan/lametric-bridge.git"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/basic-auth": "^6.2.0",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/static": "^10.1.3",
+    "fastify": "^5.11.2",
+    "pg": "^8.22.0",
+    "uuid": "^14.0.1",
+    "ws": "^8.21.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0",
+    "@types/pg": "^8.21.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

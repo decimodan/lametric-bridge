@@ -1,0 +1,176 @@
+:root {
+  --bg: #12141a;
+  --panel: #1b1f2a;
+  --line: #2c3344;
+  --text: #e8ecf5;
+  --muted: #9aa3b5;
+  --accent: #3dd6c6;
+  --danger: #ff6b6b;
+  --ok: #7dce82;
+  --font: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #1e3a3a 0%, transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, #243056 0%, transparent 50%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(18, 20, 26, 0.75);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+}
+
+.brand {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sub {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tabs button,
+button {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.55rem 0.9rem;
+  cursor: pointer;
+  font: inherit;
+}
+
+.tabs button.active,
+button:hover {
+  border-color: var(--accent);
+}
+
+button.secondary {
+  background: transparent;
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+h1, h2 { margin-top: 0; }
+.hint { color: var(--muted); }
+
+.stack {
+  display: grid;
+  gap: 0.85rem;
+  margin: 1rem 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input, select {
+  width: 100%;
+  background: #0e1016;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+}
+
+.row input { width: auto; flex: 1; min-width: 12rem; }
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.list li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.list.compact li {
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-family: var(--mono);
+}
+
+.msg {
+  min-height: 1.2rem;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.msg.error { color: var(--danger); }
+.msg.ok { color: var(--ok); }
+
+code {
+  font-family: var(--mono);
+  background: #0e1016;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
