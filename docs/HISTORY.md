@@ -16,3 +16,13 @@
 
 - Replaced SQLite with Postgres (`pg` + `DATABASE_URL`) to reuse the existing shared DB instance.
 - Schema applied via versioned SQL files in `migrations/` on startup.
+
+## 2026-08-07 — LaMetric device via env
+
+- Prefer `LAMETRIC_DEVICE_IP` + `LAMETRIC_API_KEY` over panel/DB device config when both are set.
+- Panel device form becomes read-only in that mode.
+
+- Decided against public subdomain `lametric.guerrerodev.com` (Cloudflare DNS / internet exposure).
+- Dokploy Traefik host set to `lametric.lan` with HTTPS off and no Let's Encrypt.
+- Asus GT-BE98 DNS: `/etc/hosts` entry `lametric.lan` → `192.168.50.230`, reapplied by `/jffs/lametric-dns.sh` via `cru` every 5 minutes (stock firmware has no Merlin `dnsmasq.conf.add`).
+- LAN domain name set to `lan` (`nvram lan_domain=lan`).

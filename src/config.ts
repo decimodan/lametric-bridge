@@ -17,9 +17,16 @@ export const config = {
   panelUser: env("PANEL_USER", "admin"),
   panelPassword: env("PANEL_PASSWORD", "changeme"),
   configSecret: env("CONFIG_SECRET", "dev-only-secret-change-me"),
+  /** When both are set, device config comes from env (not the panel / DB). */
+  lametricDeviceIp: process.env.LAMETRIC_DEVICE_IP?.trim() || "",
+  lametricApiKey: process.env.LAMETRIC_API_KEY?.trim() || "",
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? "60"),
   queueIntervalMs: Number(process.env.QUEUE_INTERVAL_MS ?? "400"),
   migrationsDir: path.resolve(
     process.env.MIGRATIONS_DIR ?? path.join(here, "..", "..", "migrations"),
   ),
 };
+
+export function lametricFromEnv(): boolean {
+  return Boolean(config.lametricDeviceIp && config.lametricApiKey);
+}

@@ -20,7 +20,7 @@ import {
   saveDeviceConfig,
   testConnection,
 } from "../adapters/lametric.js";
-import { config } from "../config.js";
+import { config, lametricFromEnv } from "../config.js";
 import {
   createApp,
   deleteApp,
@@ -70,7 +70,12 @@ function registerPanelApi(app: FastifyInstance): void {
     const channels = await listChannels();
     return {
       device: d
-        ? { host: d.host, lastSeen: d.lastSeen, configured: true }
+        ? {
+            host: d.host,
+            lastSeen: d.lastSeen,
+            configured: true,
+            source: d.source,
+          }
         : { configured: false },
       ha: {
         ...status,
@@ -89,10 +94,21 @@ function registerPanelApi(app: FastifyInstance): void {
   app.get("/panel/api/device", async () => {
     const d = await getDeviceConfig();
     if (!d) return { configured: false };
-    return { configured: true, host: d.host, lastSeen: d.lastSeen };
+    return {
+      configured: true,
+      host: d.host,
+      lastSeen: d.lastSeen,
+      source: d.source,
+    };
   });
 
   app.put("/panel/api/device", async (request, reply) => {
+    if (lametricFromEnv()) {
+      return reply.code(409).send({
+        error:
+          "LaMetric device is managed via LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY",
+      });
+    }
     const parsed = z
       .object({
         host: z.string().min(1),

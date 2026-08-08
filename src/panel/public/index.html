@@ -24,7 +24,7 @@
   <main>
     <section id="tab-device" class="panel active">
       <h1>Dispositivo LaMetric</h1>
-      <p class="hint">IP o host del reloj en la LAN y API key de developer (local).</p>
+      <p class="hint" id="deviceHint">IP o host del reloj en la LAN y API key de developer (local).</p>
       <form id="deviceForm" class="stack">
         <label>Host / IP
           <input name="host" placeholder="192.168.1.50" required />
@@ -33,7 +33,7 @@
           <input name="apiKey" type="password" placeholder="device API key" required />
         </label>
         <div class="row">
-          <button type="submit">Guardar</button>
+          <button type="submit" id="deviceSave">Guardar</button>
           <button type="button" id="deviceTest" class="secondary">Probar conexión</button>
         </div>
         <p class="msg" id="deviceMsg"></p>

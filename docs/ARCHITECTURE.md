@@ -56,4 +56,9 @@ Required environment variables:
 - `CONFIG_SECRET`
 - `PORT` (default `3000`)
 
+Optional (preferred in prod): when both are set, LaMetric device config comes from env and the panel form is read-only:
+
+- `LAMETRIC_DEVICE_IP`
+- `LAMETRIC_API_KEY`
+
 Healthcheck: `GET /api/v1/health`

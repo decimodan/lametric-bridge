@@ -41,10 +41,21 @@ async function refreshStatus() {
 /* Device */
 async function loadDevice() {
   const d = await api("/panel/api/device");
+  const form = $("#deviceForm");
   if (d.configured) {
-    $("#deviceForm").host.value = d.host || "";
+    form.host.value = d.host || "";
   }
+  const fromEnv = d.source === "env";
+  form.host.readOnly = fromEnv;
+  form.apiKey.readOnly = fromEnv;
+  form.apiKey.required = !fromEnv;
+  form.apiKey.placeholder = fromEnv ? "(desde variables de entorno)" : "device API key";
+  $("#deviceSave").hidden = fromEnv;
+  $("#deviceHint").textContent = fromEnv
+    ? "Configurado vía LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY (solo lectura en el panel)."
+    : "IP o host del reloj en la LAN y API key de developer (local).";
 }
+
 
 $("#deviceForm").addEventListener("submit", async (e) => {
   e.preventDefault();

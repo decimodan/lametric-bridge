@@ -1,3 +1,4 @@
+import { config, lametricFromEnv } from "../config.js";
 import { query, type LametricDeviceRow } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../db/crypto.js";
 import type { Message, Priority } from "../services/render.js";
@@ -7,6 +8,7 @@ export type DeviceConfig = {
   host: string;
   apiKey: string;
   lastSeen: string | Date | null;
+  source: "env" | "db";
 };
 
 async function deviceRow(): Promise<LametricDeviceRow | undefined> {
@@ -17,16 +19,32 @@ async function deviceRow(): Promise<LametricDeviceRow | undefined> {
 }
 
 export async function getDeviceConfig(): Promise<DeviceConfig | null> {
+  if (lametricFromEnv()) {
+    const row = await deviceRow();
+    return {
+      host: config.lametricDeviceIp.replace(/\/$/, ""),
+      apiKey: config.lametricApiKey,
+      lastSeen: row?.last_seen ?? null,
+      source: "env",
+    };
+  }
+
   const row = await deviceRow();
   if (!row) return null;
   return {
     host: row.host,
     apiKey: decryptSecret(row.api_key_enc),
     lastSeen: row.last_seen,
+    source: "db",
   };
 }
 
 export async function saveDeviceConfig(host: string, apiKey: string): Promise<void> {
+  if (lametricFromEnv()) {
+    throw new Error(
+      "LaMetric device is managed via LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY",
+    );
+  }
   await query(
     `INSERT INTO lametric_device (id, host, api_key_enc, last_seen)
      VALUES (1, $1, $2, NULL)
@@ -55,9 +73,21 @@ function candidateBases(host: string): string[] {
 }
 
 async function touchLastSeen(): Promise<void> {
-  await query(
-    "UPDATE lametric_device SET last_seen = NOW() WHERE id = 1",
-  );
+  if (lametricFromEnv()) {
+    await query(
+      `INSERT INTO lametric_device (id, host, api_key_enc, last_seen)
+       VALUES (1, $1, $2, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         host = EXCLUDED.host,
+         last_seen = NOW()`,
+      [
+        config.lametricDeviceIp.replace(/\/$/, ""),
+        encryptSecret(config.lametricApiKey),
+      ],
+    );
+    return;
+  }
+  await query("UPDATE lametric_device SET last_seen = NOW() WHERE id = 1");
 }
 
 export async function testConnection(): Promise<{ ok: boolean; detail: string }> {
