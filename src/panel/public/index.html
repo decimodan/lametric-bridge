@@ -163,8 +163,9 @@
           </select>
         </label>
         <label>Template
-          <input name="template" value="{{ name }}: {{ state }}{{ unit }}" />
+          <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
         </label>
+        <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
         <label>Icon
           <input name="icon" value="a2867" />
         </label>

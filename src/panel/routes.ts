@@ -346,6 +346,43 @@ function registerPanelApi(app: FastifyInstance): void {
     return { entity: await upsertHaEntity(parsed.data) };
   });
 
+  app.patch("/panel/api/ha/entities/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        entity_id: z.string().min(1).optional(),
+        mode: z.enum(["notify", "frame"]).optional(),
+        template: z.string().min(1).optional(),
+        icon: z.string().min(1).optional(),
+        channel_id: z.string().uuid().nullable().optional(),
+        enabled: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const existing = (await listHaEntities()).find((e) => e.id === id);
+    if (!existing) {
+      return reply.code(404).send({ error: "Not found" });
+    }
+    const entity = await upsertHaEntity({
+      id,
+      entity_id: parsed.data.entity_id ?? existing.entity_id,
+      mode: parsed.data.mode ?? existing.mode,
+      template: parsed.data.template ?? existing.template,
+      icon: parsed.data.icon ?? existing.icon,
+      channel_id:
+        parsed.data.channel_id === undefined
+          ? existing.channel_id
+          : parsed.data.channel_id,
+      enabled:
+        parsed.data.enabled === undefined
+          ? existing.enabled
+          : parsed.data.enabled,
+    });
+    return { entity };
+  });
+
   app.delete("/panel/api/ha/entities/:id", async (request, reply) => {
     const { id } = request.params as { id: string };
     if (!(await deleteHaEntity(id))) {

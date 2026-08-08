@@ -377,22 +377,77 @@ $("#channelForm").addEventListener("submit", async (e) => {
 async function loadHa() {
   const data = await api("/panel/api/ha");
   if (data.baseUrl) $("#haForm").baseUrl.value = data.baseUrl;
+
+  let previews = [];
+  try {
+    const p = await api("/panel/api/ha/previews");
+    previews = p.entities || [];
+  } catch {
+    previews = [];
+  }
+  const previewById = Object.fromEntries(previews.map((e) => [e.id, e]));
+
   const list = $("#haEntityList");
   list.innerHTML = "";
   for (const ent of data.entities) {
+    const preview = previewById[ent.id];
     const li = document.createElement("li");
+    li.style.alignItems = "stretch";
+    li.style.flexDirection = "column";
     li.innerHTML = `
-      <div>
-        <strong>${escapeHtml(ent.entity_id)}</strong>
-        <div class="meta">${ent.mode} · ${escapeHtml(ent.template)}</div>
+      <div class="row" style="justify-content:space-between;width:100%;margin:0">
+        <div>
+          <strong>${escapeHtml(preview?.friendly_name || ent.entity_id)}</strong>
+          <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)}</div>
+        </div>
+        <button type="button" class="danger" data-del-ent="${ent.id}">Borrar</button>
       </div>
-      <button type="button" class="danger" data-del-ent="${ent.id}">Borrar</button>`;
+      <form class="stack entity-edit" data-id="${ent.id}" style="width:100%;margin:0.5rem 0 0">
+        <label>Template
+          <input name="template" value="${escapeHtml(ent.template)}" />
+        </label>
+        <div class="row">
+          <label>Modo
+            <select name="mode">
+              <option value="frame" ${ent.mode === "frame" ? "selected" : ""}>frame</option>
+              <option value="notify" ${ent.mode === "notify" ? "selected" : ""}>notify</option>
+            </select>
+          </label>
+          <label>Icon
+            <input name="icon" value="${escapeHtml(ent.icon)}" style="width:7rem" />
+          </label>
+          <button type="submit">Guardar texto</button>
+        </div>
+        <div class="meta">Preview: <strong data-preview-for="${ent.id}">${escapeHtml(preview?.preview || "(sin estado)")}</strong></div>
+      </form>`;
     list.appendChild(li);
   }
+
   list.querySelectorAll("[data-del-ent]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await api(`/panel/api/ha/entities/${btn.dataset.delEnt}`, { method: "DELETE" });
       loadHa();
+    });
+  });
+
+  list.querySelectorAll("form.entity-edit").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      try {
+        await api(`/panel/api/ha/entities/${form.dataset.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            template: fd.get("template"),
+            mode: fd.get("mode"),
+            icon: fd.get("icon"),
+          }),
+        });
+        setMsg($("#haMsg"), "Entidad actualizada", "ok");
+        await loadHa();
+      } catch (err) {
+        setMsg($("#haMsg"), err.message, "error");
+      }
     });
   });
 }

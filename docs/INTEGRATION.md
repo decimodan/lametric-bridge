@@ -83,6 +83,8 @@ No API key required (LAN only). Response shape:
    - `notify` — enqueue a LaMetric notification on state change
    - `frame` — update a channel frame continuously
 4. Templates support `{{ state }}`, `{{ name }}`, `{{ unit }}`, `{{ entity_id }}`.
+   Filters: `{{ state | round:2 }}`, `{{ state | fixed:2 }}`, `{{ state | int }}`.
+   Edit templates anytime in the panel (Home Assistant → entity card → Guardar texto).
 
 ## Health
 
