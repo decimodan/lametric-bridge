@@ -239,6 +239,41 @@ export function passesAbsoluteRules(
   return false;
 }
 
+function hasAbsoluteRules(
+  mapping: Pick<HaEntityRow, "when_gt" | "when_lt">,
+): boolean {
+  return mapping.when_gt != null || mapping.when_lt != null;
+}
+
+/**
+ * Change-path gate:
+ * - always require a real change (and min_delta when set)
+ * - with when_gt/when_lt: fire on edge into the zone; while still inside,
+ *   only re-fire if min_delta is set and the delta is met
+ */
+export function shouldEmitForStateChange(
+  mapping: Pick<HaEntityRow, "last_value" | "min_delta" | "when_gt" | "when_lt">,
+  newState: string,
+): boolean {
+  if (!passesAbsoluteRules(mapping, newState)) return false;
+  if (!shouldEmitOnChange(mapping, newState)) return false;
+
+  if (!hasAbsoluteRules(mapping)) return true;
+
+  const prev = mapping.last_value;
+  if (prev == null) return true;
+
+  const wasInside = passesAbsoluteRules(mapping, prev);
+  if (!wasInside) return true; // edge into zone
+
+  // Still inside the zone: only re-alert when min_delta is configured.
+  return mapping.min_delta != null;
+}
+
+function isIntervalDriven(mapping: Pick<HaEntityRow, "interval_sec">): boolean {
+  return mapping.interval_sec != null && Number(mapping.interval_sec) >= 10;
+}
+
 async function markEntitySent(id: string, value: string): Promise<void> {
   await query(
     `UPDATE ha_entities
@@ -293,8 +328,12 @@ async function handleState(
   );
   const mapping = res.rows[0];
   if (!mapping) return;
-  if (!passesAbsoluteRules(mapping, state)) return;
-  if (!shouldEmitOnChange(mapping, state)) return;
+
+  // Notify + interval: cadence is owned by the interval ticker (avoid flood).
+  // Frames still update on change so the channel stays fresh.
+  if (mapping.mode === "notify" && isIntervalDriven(mapping)) return;
+
+  if (!shouldEmitForStateChange(mapping, state)) return;
   await emitEntity(mapping, state, attributes, "ha");
 }
 
@@ -471,6 +510,12 @@ function scheduleReconnect(): void {
   }, 5000);
 }
 
+function stopPollingFallback(): void {
+  if (!pollTimer) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
 function startPollingFallback(): void {
   if (pollTimer) return;
   pollTimer = setInterval(() => {
@@ -546,6 +591,7 @@ async function connectWs(): Promise<void> {
         }
 
         if (data.type === "auth_ok") {
+          stopPollingFallback();
           ws?.send(
             JSON.stringify({
               id: nextId(),

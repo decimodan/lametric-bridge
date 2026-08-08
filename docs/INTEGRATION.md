@@ -86,9 +86,9 @@ No API key required (LAN only). Response shape:
    Filters: `{{ state | round:2 }}`, `{{ state | fixed:2 }}`, `{{ state | int }}`.
    Edit templates anytime in the panel (Home Assistant → entity card → Guardar texto).
 5. Optional automation per entity:
-   - `interval_sec` — enqueue/update every N seconds (min 10)
+   - `interval_sec` — for `notify`, owns the cadence (no per-change enqueue; min 10s). Frames still update on change.
    - `min_delta` — only emit on change when `|new - last| >= delta` (numeric)
-   - `when_gt` / `when_lt` — only emit when numeric state is `> X` and/or `< Y`
+   - `when_gt` / `when_lt` — emit when numeric state is `> X` and/or `< Y` (edge into zone; re-alert while inside only if `min_delta` is set)
    - `priority` / `sound` — used when notifying the LaMetric
 
 ## Health

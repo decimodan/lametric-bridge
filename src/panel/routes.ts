@@ -40,6 +40,7 @@ import {
 } from "../services/channels.js";
 import {
   clearQueue,
+  getCurrentQueueItem,
   listNotifyLog,
   listQueue,
   logNotify,
@@ -123,6 +124,7 @@ function registerPanelApi(app: FastifyInstance): void {
 
   app.get("/panel/api/queue", async () => ({
     size: queueSize(),
+    current: getCurrentQueueItem(),
     items: listQueue(),
     recent: await listNotifyLog(20),
   }));

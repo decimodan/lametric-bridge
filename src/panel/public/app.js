@@ -202,10 +202,15 @@ async function loadQueueEntities() {
 async function loadQueueBoard() {
   const data = await api("/panel/api/queue");
   $("#queueSizeLabel").textContent = `(${data.size})`;
+  const cur = data.current;
+  $("#queueCurrentLabel").textContent = cur
+    ? `Enviando: [${cur.priority}] ${cur.text}`
+    : "Enviando: —";
+
   for (const p of ["critical", "warning", "info"]) {
     const lane = $(`#lane-${p}`);
     lane.innerHTML = "";
-    const items = data.items.filter((i) => i.priority === p);
+    const items = (data.items || []).filter((i) => i.priority === p);
     for (const item of items) {
       const li = document.createElement("li");
       li.innerHTML = `
