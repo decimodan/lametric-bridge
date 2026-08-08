@@ -133,6 +133,13 @@ function displayPauseMs(message: Message, ok: boolean): number {
   return Math.min(Math.max(config.queueIntervalMs, lifetime * cycles), 20_000);
 }
 
+/** Errors that will not succeed on retry (DND, auth, bad config). */
+function isPermanentFailure(detail: string): boolean {
+  return /only notifications with priority|authorization is required|not configured|modo silencioso/i.test(
+    detail,
+  );
+}
+
 async function processOne(): Promise<number> {
   const item = queue.shift();
   if (!item) return config.queueIntervalMs;
@@ -142,9 +149,11 @@ async function processOne(): Promise<number> {
 
   try {
     let ok = false;
+    let detail = "";
     try {
       const result = await sendNotification(item.message);
       ok = result.ok;
+      detail = result.detail;
       await logNotify(
         item.message.source,
         item.message.text,
@@ -154,7 +163,7 @@ async function processOne(): Promise<number> {
         item.message.appId,
       );
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      detail = err instanceof Error ? err.message : String(err);
       await logNotify(
         item.message.source,
         item.message.text,
@@ -165,11 +174,13 @@ async function processOne(): Promise<number> {
       );
     }
 
-    if (!ok && item.attempts < MAX_ATTEMPTS) {
+    const permanent = !ok && isPermanentFailure(detail);
+    if (!ok && !permanent && item.attempts < MAX_ATTEMPTS) {
       queue.push(item);
       sortQueue();
     }
 
+    if (permanent) return Math.max(config.queueIntervalMs, 400);
     return displayPauseMs(item.message, ok);
   } finally {
     current = null;
