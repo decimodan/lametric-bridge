@@ -63,6 +63,8 @@ export async function upsertHaEntity(input: {
   sound?: boolean;
   interval_sec?: number | null;
   min_delta?: number | null;
+  when_gt?: number | null;
+  when_lt?: number | null;
 }): Promise<HaEntityRow> {
   const id = input.id ?? uuid();
   const existingRes = await query<HaEntityRow>(
@@ -81,6 +83,10 @@ export async function upsertHaEntity(input: {
     input.min_delta === undefined
       ? (existing?.min_delta ?? null)
       : input.min_delta;
+  const whenGt =
+    input.when_gt === undefined ? (existing?.when_gt ?? null) : input.when_gt;
+  const whenLt =
+    input.when_lt === undefined ? (existing?.when_lt ?? null) : input.when_lt;
 
   if (existing) {
     await query(
@@ -94,8 +100,10 @@ export async function upsertHaEntity(input: {
          priority = $7,
          sound = $8,
          interval_sec = $9,
-         min_delta = $10
-       WHERE id = $11`,
+         min_delta = $10,
+         when_gt = $11,
+         when_lt = $12
+       WHERE id = $13`,
       [
         input.entity_id,
         input.mode,
@@ -107,6 +115,8 @@ export async function upsertHaEntity(input: {
         sound,
         intervalSec,
         minDelta,
+        whenGt,
+        whenLt,
         existing.id,
       ],
     );
@@ -120,8 +130,8 @@ export async function upsertHaEntity(input: {
   await query(
     `INSERT INTO ha_entities (
        id, entity_id, mode, template, icon, channel_id, enabled,
-       priority, sound, interval_sec, min_delta
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+       priority, sound, interval_sec, min_delta, when_gt, when_lt
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       id,
       input.entity_id,
@@ -134,6 +144,8 @@ export async function upsertHaEntity(input: {
       sound,
       intervalSec,
       minDelta,
+      whenGt,
+      whenLt,
     ],
   );
 
@@ -210,6 +222,23 @@ export function shouldEmitOnChange(
   return Math.abs(b - a) >= threshold;
 }
 
+/** Absolute thresholds: only emit when value is > when_gt and/or < when_lt. */
+export function passesAbsoluteRules(
+  mapping: Pick<HaEntityRow, "when_gt" | "when_lt">,
+  state: string,
+): boolean {
+  const hasGt = mapping.when_gt != null;
+  const hasLt = mapping.when_lt != null;
+  if (!hasGt && !hasLt) return true;
+
+  const n = parseNumericState(state);
+  if (n === null) return false;
+
+  if (hasGt && n > Number(mapping.when_gt)) return true;
+  if (hasLt && n < Number(mapping.when_lt)) return true;
+  return false;
+}
+
 async function markEntitySent(id: string, value: string): Promise<void> {
   await query(
     `UPDATE ha_entities
@@ -264,6 +293,7 @@ async function handleState(
   );
   const mapping = res.rows[0];
   if (!mapping) return;
+  if (!passesAbsoluteRules(mapping, state)) return;
   if (!shouldEmitOnChange(mapping, state)) return;
   await emitEntity(mapping, state, attributes, "ha");
 }
@@ -298,6 +328,7 @@ async function tickIntervalEntities(): Promise<void> {
   for (const mapping of entities.rows) {
     const s = byId.get(mapping.entity_id);
     if (!s) continue;
+    if (!passesAbsoluteRules(mapping, s.state)) continue;
     await emitEntity(mapping, s.state, s.attributes ?? {}, "ha-interval");
   }
 }
@@ -375,6 +406,8 @@ export async function previewHaEntities(): Promise<
     sound: boolean;
     interval_sec: number | null;
     min_delta: number | null;
+    when_gt: number | null;
+    when_lt: number | null;
     last_value: string | null;
     last_sent_at: string | Date | null;
     state: string | null;
@@ -416,6 +449,8 @@ export async function previewHaEntities(): Promise<
       sound: Boolean(ent.sound),
       interval_sec: ent.interval_sec,
       min_delta: ent.min_delta,
+      when_gt: ent.when_gt,
+      when_lt: ent.when_lt,
       last_value: ent.last_value,
       last_sent_at: ent.last_sent_at,
       state: s?.state ?? null,

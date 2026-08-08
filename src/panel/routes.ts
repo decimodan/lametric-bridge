@@ -363,6 +363,8 @@ function registerPanelApi(app: FastifyInstance): void {
         sound: z.boolean().optional(),
         interval_sec: z.number().int().min(10).nullable().optional(),
         min_delta: z.number().nonnegative().nullable().optional(),
+        when_gt: z.number().nullable().optional(),
+        when_lt: z.number().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -385,6 +387,8 @@ function registerPanelApi(app: FastifyInstance): void {
         sound: z.boolean().optional(),
         interval_sec: z.number().int().min(10).nullable().optional(),
         min_delta: z.number().nonnegative().nullable().optional(),
+        when_gt: z.number().nullable().optional(),
+        when_lt: z.number().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -418,6 +422,14 @@ function registerPanelApi(app: FastifyInstance): void {
         parsed.data.min_delta === undefined
           ? existing.min_delta
           : parsed.data.min_delta,
+      when_gt:
+        parsed.data.when_gt === undefined
+          ? existing.when_gt
+          : parsed.data.when_gt,
+      when_lt:
+        parsed.data.when_lt === undefined
+          ? existing.when_lt
+          : parsed.data.when_lt,
     });
     return { entity };
   });

@@ -563,6 +563,12 @@ async function loadHa() {
           <label>Δ mínimo
             <input name="min_delta" type="number" min="0" step="0.1" placeholder="off" value="${preview.min_delta ?? ent.min_delta ?? ""}" />
           </label>
+          <label>Si &gt;
+            <input name="when_gt" type="number" step="0.1" placeholder="off" value="${preview.when_gt ?? ent.when_gt ?? ""}" />
+          </label>
+          <label>Si &lt;
+            <input name="when_lt" type="number" step="0.1" placeholder="off" value="${preview.when_lt ?? ent.when_lt ?? ""}" />
+          </label>
           <label class="check">
             <input name="sound" type="checkbox" ${(preview.sound ?? ent.sound) ? "checked" : ""} />
             Sonido
@@ -573,6 +579,8 @@ async function loadHa() {
           · last ${escapeHtml(String(preview.last_value ?? ent.last_value ?? "—"))}
           ${(preview.interval_sec ?? ent.interval_sec) ? `· cada ${preview.interval_sec ?? ent.interval_sec}s` : ""}
           ${(preview.min_delta ?? ent.min_delta) != null ? `· Δ≥${preview.min_delta ?? ent.min_delta}` : ""}
+          ${(preview.when_gt ?? ent.when_gt) != null ? `· >${preview.when_gt ?? ent.when_gt}` : ""}
+          ${(preview.when_lt ?? ent.when_lt) != null ? `· <${preview.when_lt ?? ent.when_lt}` : ""}
         </div>
       </form>`;
     list.appendChild(li);
@@ -603,6 +611,12 @@ async function loadHa() {
               : null,
             min_delta: fd.get("min_delta") !== "" && fd.get("min_delta") != null
               ? Number(fd.get("min_delta"))
+              : null,
+            when_gt: fd.get("when_gt") !== "" && fd.get("when_gt") != null
+              ? Number(fd.get("when_gt"))
+              : null,
+            when_lt: fd.get("when_lt") !== "" && fd.get("when_lt") != null
+              ? Number(fd.get("when_lt"))
               : null,
           }),
         });
@@ -682,6 +696,14 @@ $("#haEntityForm").addEventListener("submit", async (e) => {
       min_delta:
         fd.get("min_delta") !== "" && fd.get("min_delta") != null
           ? Number(fd.get("min_delta"))
+          : null,
+      when_gt:
+        fd.get("when_gt") !== "" && fd.get("when_gt") != null
+          ? Number(fd.get("when_gt"))
+          : null,
+      when_lt:
+        fd.get("when_lt") !== "" && fd.get("when_lt") != null
+          ? Number(fd.get("when_lt"))
           : null,
     }),
   });

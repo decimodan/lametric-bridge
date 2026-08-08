@@ -88,6 +88,7 @@ No API key required (LAN only). Response shape:
 5. Optional automation per entity:
    - `interval_sec` — enqueue/update every N seconds (min 10)
    - `min_delta` — only emit on change when `|new - last| >= delta` (numeric)
+   - `when_gt` / `when_lt` — only emit when numeric state is `> X` and/or `< Y`
    - `priority` / `sound` — used when notifying the LaMetric
 
 ## Health

@@ -35,6 +35,8 @@ export type HaEntityRow = {
   sound: boolean;
   interval_sec: number | null;
   min_delta: number | null;
+  when_gt: number | null;
+  when_lt: number | null;
   last_value: string | null;
   last_sent_at: string | Date | null;
 };
