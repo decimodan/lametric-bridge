@@ -84,6 +84,41 @@ $("#deviceTest").addEventListener("click", async () => {
   }
 });
 
+async function sendToLametric(payload) {
+  const r = await api("/panel/api/device/notify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  setMsg($("#notifyMsg"), r.detail, r.ok ? "ok" : "error");
+  return r;
+}
+
+$("#notifyForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    await sendToLametric({
+      text: String(fd.get("text") || "").trim(),
+      priority: fd.get("priority") || "info",
+      sound: fd.get("sound") === "on",
+    });
+  } catch (err) {
+    setMsg($("#notifyMsg"), err.message, "error");
+  }
+});
+
+$("#notifyTest").addEventListener("click", async () => {
+  try {
+    await sendToLametric({
+      text: "Prueba lametric-bridge",
+      priority: "info",
+      sound: true,
+    });
+  } catch (err) {
+    setMsg($("#notifyMsg"), err.message, "error");
+  }
+});
+
 /* Apps */
 async function loadApps() {
   const { apps } = await api("/panel/api/apps");

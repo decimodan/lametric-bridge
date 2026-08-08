@@ -38,6 +38,32 @@
         </div>
         <p class="msg" id="deviceMsg"></p>
       </form>
+
+      <h2>Enviar al LaMetric</h2>
+      <p class="hint">Muestra una notificación inmediata en el reloj.</p>
+      <form id="notifyForm" class="stack">
+        <label>Texto
+          <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
+        </label>
+        <div class="row">
+          <label>Prioridad
+            <select name="priority">
+              <option value="info">info</option>
+              <option value="warning">warning</option>
+              <option value="critical">critical</option>
+            </select>
+          </label>
+          <label class="check">
+            <input name="sound" type="checkbox" />
+            Sonido
+          </label>
+        </div>
+        <div class="row">
+          <button type="submit">Enviar</button>
+          <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
+        </div>
+        <p class="msg" id="notifyMsg"></p>
+      </form>
     </section>
 
     <section id="tab-apps" class="panel">

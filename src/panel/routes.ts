@@ -18,6 +18,7 @@ import {
 import {
   getDeviceConfig,
   saveDeviceConfig,
+  sendNotification,
   testConnection,
 } from "../adapters/lametric.js";
 import { config, lametricFromEnv } from "../config.js";
@@ -34,7 +35,7 @@ import {
   updateChannel,
   upsertFrame,
 } from "../services/channels.js";
-import { listNotifyLog, queueSize } from "../services/queue.js";
+import { listNotifyLog, logNotify, queueSize } from "../services/queue.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -123,6 +124,37 @@ function registerPanelApi(app: FastifyInstance): void {
   });
 
   app.post("/panel/api/device/test", async () => testConnection());
+
+  app.post("/panel/api/device/notify", async (request, reply) => {
+    const parsed = z
+      .object({
+        text: z.string().min(1).max(256),
+        icon: z.string().max(64).optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const body = parsed.data;
+    const result = await sendNotification({
+      text: body.text,
+      icon: body.icon,
+      priority: body.priority ?? "info",
+      sound: body.sound,
+      source: "panel",
+    });
+    await logNotify(
+      "panel",
+      body.text,
+      body.priority ?? "info",
+      result.ok ? "ok" : "error",
+      result.detail,
+    );
+    return result;
+  });
 
   app.get("/panel/api/apps", async () => ({ apps: await listApps() }));
 

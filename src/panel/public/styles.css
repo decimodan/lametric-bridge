@@ -127,6 +127,18 @@ input, select {
 
 .row input { width: auto; flex: 1; min-width: 12rem; }
 
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 1.4rem;
+}
+
+label.check input {
+  width: auto;
+  flex: none;
+}
+
 .list {
   list-style: none;
   padding: 0;
