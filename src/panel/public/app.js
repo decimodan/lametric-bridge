@@ -522,7 +522,7 @@ async function loadHa() {
   const list = $("#haEntityList");
   list.innerHTML = "";
   for (const ent of data.entities) {
-    const preview = previewById[ent.id];
+    const preview = previewById[ent.id] || ent;
     const li = document.createElement("li");
     li.style.alignItems = "stretch";
     li.style.flexDirection = "column";
@@ -548,9 +548,32 @@ async function loadHa() {
           <label>Icon
             <input name="icon" class="icon-field" value="${escapeHtml(ent.icon)}" style="width:7rem" />
           </label>
-          <button type="submit">Guardar texto</button>
+          <label>Prioridad
+            <select name="priority">
+              <option value="critical" ${(preview.priority || ent.priority) === "critical" ? "selected" : ""}>critical</option>
+              <option value="warning" ${(preview.priority || ent.priority) === "warning" ? "selected" : ""}>warning</option>
+              <option value="info" ${(preview.priority || ent.priority || "info") === "info" ? "selected" : ""}>info</option>
+            </select>
+          </label>
         </div>
-        <div class="meta">Preview: <strong data-preview-for="${ent.id}">${escapeHtml(preview?.preview || "(sin estado)")}</strong></div>
+        <div class="row">
+          <label>Cada N seg.
+            <input name="interval_sec" type="number" min="10" placeholder="off" value="${preview.interval_sec ?? ent.interval_sec ?? ""}" />
+          </label>
+          <label>Δ mínimo
+            <input name="min_delta" type="number" min="0" step="0.1" placeholder="off" value="${preview.min_delta ?? ent.min_delta ?? ""}" />
+          </label>
+          <label class="check">
+            <input name="sound" type="checkbox" ${(preview.sound ?? ent.sound) ? "checked" : ""} />
+            Sonido
+          </label>
+          <button type="submit">Guardar</button>
+        </div>
+        <div class="meta">Preview: <strong>${escapeHtml(preview?.preview || "(sin estado)")}</strong>
+          · last ${escapeHtml(String(preview.last_value ?? ent.last_value ?? "—"))}
+          ${(preview.interval_sec ?? ent.interval_sec) ? `· cada ${preview.interval_sec ?? ent.interval_sec}s` : ""}
+          ${(preview.min_delta ?? ent.min_delta) != null ? `· Δ≥${preview.min_delta ?? ent.min_delta}` : ""}
+        </div>
       </form>`;
     list.appendChild(li);
   }
@@ -573,6 +596,14 @@ async function loadHa() {
             template: fd.get("template"),
             mode: fd.get("mode"),
             icon: fd.get("icon"),
+            priority: fd.get("priority"),
+            sound: fd.get("sound") === "on",
+            interval_sec: fd.get("interval_sec")
+              ? Number(fd.get("interval_sec"))
+              : null,
+            min_delta: fd.get("min_delta") !== "" && fd.get("min_delta") != null
+              ? Number(fd.get("min_delta"))
+              : null,
           }),
         });
         setMsg($("#haMsg"), "Entidad actualizada", "ok");
@@ -643,8 +674,18 @@ $("#haEntityForm").addEventListener("submit", async (e) => {
       template: fd.get("template"),
       icon: fd.get("icon"),
       channel_id: fd.get("channel_id") || null,
+      priority: fd.get("priority") || "critical",
+      sound: fd.get("sound") === "on",
+      interval_sec: fd.get("interval_sec")
+        ? Number(fd.get("interval_sec"))
+        : null,
+      min_delta:
+        fd.get("min_delta") !== "" && fd.get("min_delta") != null
+          ? Number(fd.get("min_delta"))
+          : null,
     }),
   });
+  e.target.reset();
   loadHa();
 });
 

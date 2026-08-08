@@ -85,6 +85,10 @@ No API key required (LAN only). Response shape:
 4. Templates support `{{ state }}`, `{{ name }}`, `{{ unit }}`, `{{ entity_id }}`.
    Filters: `{{ state | round:2 }}`, `{{ state | fixed:2 }}`, `{{ state | int }}`.
    Edit templates anytime in the panel (Home Assistant → entity card → Guardar texto).
+5. Optional automation per entity:
+   - `interval_sec` — enqueue/update every N seconds (min 10)
+   - `min_delta` — only emit on change when `|new - last| >= delta` (numeric)
+   - `priority` / `sound` — used when notifying the LaMetric
 
 ## Health
 

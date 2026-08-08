@@ -359,6 +359,10 @@ function registerPanelApi(app: FastifyInstance): void {
         icon: z.string().optional(),
         channel_id: z.string().uuid().nullable().optional(),
         enabled: z.boolean().optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        interval_sec: z.number().int().min(10).nullable().optional(),
+        min_delta: z.number().nonnegative().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -377,6 +381,10 @@ function registerPanelApi(app: FastifyInstance): void {
         icon: z.string().min(1).optional(),
         channel_id: z.string().uuid().nullable().optional(),
         enabled: z.boolean().optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        interval_sec: z.number().int().min(10).nullable().optional(),
+        min_delta: z.number().nonnegative().nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -400,6 +408,16 @@ function registerPanelApi(app: FastifyInstance): void {
         parsed.data.enabled === undefined
           ? existing.enabled
           : parsed.data.enabled,
+      priority: parsed.data.priority ?? existing.priority,
+      sound: parsed.data.sound ?? existing.sound,
+      interval_sec:
+        parsed.data.interval_sec === undefined
+          ? existing.interval_sec
+          : parsed.data.interval_sec,
+      min_delta:
+        parsed.data.min_delta === undefined
+          ? existing.min_delta
+          : parsed.data.min_delta,
     });
     return { entity };
   });

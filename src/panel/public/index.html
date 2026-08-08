@@ -196,9 +196,28 @@
           <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
         </label>
         <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
-          <label>Icon
-            <input name="icon" class="icon-field" value="a2867" />
+        <label>Icon
+          <input name="icon" class="icon-field" value="a2867" />
+        </label>
+        <div class="row">
+          <label>Prioridad
+            <select name="priority">
+              <option value="critical" selected>critical</option>
+              <option value="warning">warning</option>
+              <option value="info">info</option>
+            </select>
           </label>
+          <label>Cada N seg. (vacío = off)
+            <input name="interval_sec" type="number" min="10" placeholder="ej. 300" />
+          </label>
+          <label>Δ mínimo (vacío = cualquier cambio)
+            <input name="min_delta" type="number" min="0" step="0.1" placeholder="ej. 2" />
+          </label>
+        </div>
+        <label class="check">
+          <input name="sound" type="checkbox" />
+          Sonido al notificar
+        </label>
         <label>Canal (para mode=frame)
           <select name="channel_id" id="haChannelSelect">
             <option value="">—</option>
