@@ -1,20 +1,26 @@
-# Node 22.12+ matches engines in package.json (same pin as sentinel).
-FROM node:22.12-alpine
+# syntax=docker/dockerfile:1
 
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
 
-ENV NODE_ENV=production \
-    BRIDGE_HOST=0.0.0.0
-
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
-
+FROM deps AS build
 COPY tsconfig.json ./
 COPY src ./src
+COPY migrations ./migrations
+RUN npm run build
 
-EXPOSE 8787
-
+FROM node:22-bookworm-slim AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/migrations ./migrations
+EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "const p=process.env.PORT||process.env.BRIDGE_PORT||'8787'; fetch('http://127.0.0.1:'+p+'/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-
-CMD ["npx", "tsx", "src/server.ts"]
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+USER node
+CMD ["node", "dist/index.js"]

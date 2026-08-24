@@ -1,26 +1,32 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-function required(name: string, fallback?: string): string {
+function env(name: string, fallback?: string): string {
   const value = process.env[name] ?? fallback;
-  if (!value) {
-    throw new Error(`Missing required env var ${name}`);
+  if (value === undefined || value === "") {
+    throw new Error(`Missing required env var: ${name}`);
   }
   return value;
 }
 
-function optional(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 export const config = {
-  awtrixBaseUrl: required("AWTRIX_BASE_URL", "http://192.168.50.98").replace(
-    /\/$/,
-    "",
+  port: Number(process.env.PORT ?? "3000"),
+  databaseUrl: env("DATABASE_URL"),
+  panelUser: env("PANEL_USER", "admin"),
+  panelPassword: env("PANEL_PASSWORD", "changeme"),
+  configSecret: env("CONFIG_SECRET", "dev-only-secret-change-me"),
+  /** When both are set, device config comes from env (not the panel / DB). */
+  lametricDeviceIp: process.env.LAMETRIC_DEVICE_IP?.trim() || "",
+  lametricApiKey: process.env.LAMETRIC_API_KEY?.trim() || "",
+  rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? "60"),
+  queueIntervalMs: Number(process.env.QUEUE_INTERVAL_MS ?? "400"),
+  migrationsDir: path.resolve(
+    process.env.MIGRATIONS_DIR ?? path.join(here, "..", "..", "migrations"),
   ),
-  awtrixUser: optional("AWTRIX_USER"),
-  awtrixPass: optional("AWTRIX_PASS"),
-  bridgeHost: process.env.BRIDGE_HOST?.trim() || "0.0.0.0",
-  bridgePort: Number(process.env.PORT ?? process.env.BRIDGE_PORT ?? 8787),
-  bridgeToken: optional("BRIDGE_TOKEN"),
 };
+
+export function lametricFromEnv(): boolean {
+  return Boolean(config.lametricDeviceIp && config.lametricApiKey);
+}
