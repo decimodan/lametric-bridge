@@ -14,13 +14,13 @@ function optional(name: string): string | undefined {
 }
 
 export const config = {
-  awtrixBaseUrl: required("AWTRIX_BASE_URL", "http://awtrixng-314d94.local").replace(
+  awtrixBaseUrl: required("AWTRIX_BASE_URL", "http://192.168.50.98").replace(
     /\/$/,
     "",
   ),
   awtrixUser: optional("AWTRIX_USER"),
   awtrixPass: optional("AWTRIX_PASS"),
   bridgeHost: process.env.BRIDGE_HOST?.trim() || "0.0.0.0",
-  bridgePort: Number(process.env.BRIDGE_PORT ?? process.env.PORT ?? 8787),
+  bridgePort: Number(process.env.PORT ?? process.env.BRIDGE_PORT ?? 8787),
   bridgeToken: optional("BRIDGE_TOKEN"),
 };
