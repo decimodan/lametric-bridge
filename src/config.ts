@@ -21,6 +21,6 @@ export const config = {
   awtrixUser: optional("AWTRIX_USER"),
   awtrixPass: optional("AWTRIX_PASS"),
   bridgeHost: process.env.BRIDGE_HOST?.trim() || "0.0.0.0",
-  bridgePort: Number(process.env.BRIDGE_PORT ?? 8787),
+  bridgePort: Number(process.env.BRIDGE_PORT ?? process.env.PORT ?? 8787),
   bridgeToken: optional("BRIDGE_TOKEN"),
 };
