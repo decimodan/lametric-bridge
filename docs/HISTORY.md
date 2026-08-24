@@ -2,6 +2,12 @@
 
 # Decisions made
 
+## 2026-08-24 — Panel UI: modular widget style
+
+- Refactored the web panel to a modular card/widget layout (watch/dashboard style).
+- Light canvas with white / charcoal / coral cards, large radii, lime accents; status widgets for clocks, HA, queue, apps/channels.
+- Applied on top of dual-clock panel (LaMetric + Ulanzi) without changing API behavior.
+
 ## 2026-08-24 — Dual clocks (LaMetric + Ulanzi)
 
 - Keep both devices: LaMetric Time (local API) and Ulanzi TC001 (AWTRIX NG).

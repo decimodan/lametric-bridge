@@ -4,11 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>lametric-bridge</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <header class="top">
-    <div>
+    <div class="brand-block">
       <p class="brand">lametric-bridge</p>
       <p class="sub" id="statusLine">Cargando…</p>
     </div>
@@ -25,249 +28,328 @@
 
   <main>
     <section id="tab-device" class="panel active">
-      <h1>Relojes</h1>
-      <p class="hint" id="deviceHint">
-        LaMetric Time y Ulanzi (AWTRIX) conviven. Cada uno tiene un <code>slug</code>
-        para identificarlo en notificaciones y en Home Assistant.
-      </p>
-      <ul id="deviceList" class="list device-list"></ul>
-      <p class="msg" id="deviceMsg"></p>
+      <div class="widget-grid status-grid">
+        <article class="card card-dark status-card">
+          <p class="card-label">Relojes</p>
+          <p class="card-value" id="statDeviceValue">—</p>
+          <p class="card-meta" id="statDeviceMeta">sin configurar</p>
+          <span class="status-dot" id="statDeviceDot" data-state="off"></span>
+        </article>
+        <article class="card card-accent status-card">
+          <p class="card-label">Home Assistant</p>
+          <p class="card-value" id="statHaValue">—</p>
+          <p class="card-meta" id="statHaMeta">idle</p>
+          <span class="status-dot" id="statHaDot" data-state="off"></span>
+        </article>
+        <article class="card status-card">
+          <p class="card-label">Cola</p>
+          <p class="card-value accent-lime" id="statQueueValue">0</p>
+          <p class="card-meta">pendientes</p>
+        </article>
+        <article class="card card-coral status-card">
+          <p class="card-label">Apps · Canales</p>
+          <p class="card-value" id="statAppsValue">0 · 0</p>
+          <p class="card-meta">registrados</p>
+        </article>
+      </div>
 
-      <h2>Agregar reloj</h2>
-      <form id="deviceForm" class="stack">
-        <div class="row">
-          <label>Nombre
-            <input name="name" placeholder="Ulanzi cocina" required />
-          </label>
-          <label>Slug
-            <input name="slug" placeholder="ulanzi-cocina" required />
-          </label>
-          <label>Tipo
-            <select name="kind">
-              <option value="awtrix">Ulanzi / AWTRIX</option>
-              <option value="lametric">LaMetric Time</option>
-            </select>
-          </label>
-        </div>
-        <div class="row">
-          <label>Host / IP
-            <input name="host" placeholder="192.168.50.98" required />
-          </label>
-          <label>API key / user:pass
-            <input name="apiKey" type="password" placeholder="opcional en AWTRIX" />
-          </label>
-        </div>
-        <button type="submit">Agregar</button>
-      </form>
+      <div class="widget-grid two-col">
+        <article class="card">
+          <header class="card-head">
+            <h1>Relojes</h1>
+            <p class="hint" id="deviceHint">
+              LaMetric Time y Ulanzi (AWTRIX) conviven. Cada uno tiene un <code>slug</code>
+              para identificarlo en notificaciones y en Home Assistant.
+            </p>
+          </header>
+          <ul id="deviceList" class="list device-list"></ul>
+          <p class="msg" id="deviceMsg"></p>
 
-      <h2>Enviar notificación</h2>
-      <p class="hint">Vacío en destino = todos los relojes. En el API usá <code>device</code> con el slug.</p>
-      <form id="notifyForm" class="stack">
-        <label>Texto
-          <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
-        </label>
-        <div class="row">
-          <label>Destino
-            <select name="device" id="notifyDevice">
-              <option value="">Todos</option>
-            </select>
-          </label>
-          <label>Icono
-            <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
-          </label>
-          <label>Prioridad
-            <select name="priority">
-              <option value="info">info</option>
-              <option value="warning">warning</option>
-              <option value="critical">critical</option>
-            </select>
-          </label>
-          <label class="check">
-            <input name="sound" type="checkbox" />
-            Sonido
-          </label>
-        </div>
-        <div class="row">
-          <button type="submit">Enviar</button>
-          <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
-        </div>
-        <p class="msg" id="notifyMsg"></p>
-      </form>
+          <h2>Agregar reloj</h2>
+          <form id="deviceForm" class="stack">
+            <div class="row">
+              <label>Nombre
+                <input name="name" placeholder="Ulanzi cocina" required />
+              </label>
+              <label>Slug
+                <input name="slug" placeholder="ulanzi-cocina" required />
+              </label>
+              <label>Tipo
+                <select name="kind">
+                  <option value="awtrix">Ulanzi / AWTRIX</option>
+                  <option value="lametric">LaMetric Time</option>
+                </select>
+              </label>
+            </div>
+            <div class="row">
+              <label>Host / IP
+                <input name="host" placeholder="192.168.50.98" required />
+              </label>
+              <label>API key / user:pass
+                <input name="apiKey" type="password" placeholder="opcional en AWTRIX" />
+              </label>
+            </div>
+            <button type="submit" class="btn-lime">Agregar</button>
+          </form>
+        </article>
+
+        <article class="card card-dark">
+          <header class="card-head">
+            <h1>Enviar notificación</h1>
+            <p class="hint">Vacío en destino = todos los relojes. En el API usá <code>device</code> con el slug.</p>
+          </header>
+          <form id="notifyForm" class="stack">
+            <label>Texto
+              <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
+            </label>
+            <div class="row">
+              <label>Destino
+                <select name="device" id="notifyDevice">
+                  <option value="">Todos</option>
+                </select>
+              </label>
+              <label>Icono
+                <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
+              </label>
+              <label>Prioridad
+                <select name="priority">
+                  <option value="info">info</option>
+                  <option value="warning">warning</option>
+                  <option value="critical">critical</option>
+                </select>
+              </label>
+              <label class="check">
+                <input name="sound" type="checkbox" />
+                Sonido
+              </label>
+            </div>
+            <div class="row">
+              <button type="submit" class="btn-lime">Enviar</button>
+              <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
+            </div>
+            <p class="msg" id="notifyMsg"></p>
+          </form>
+        </article>
+      </div>
     </section>
 
     <section id="tab-icons" class="panel">
-      <h1>Iconos LaMetric</h1>
-      <p class="hint">Buscá y hacé clic para seleccionar. El código (<code>a123</code> / <code>i123</code>) se aplica al último campo de icono enfocado o al seleccionado abajo.</p>
-      <div class="row icon-selected-bar" id="iconSelectedBar">
-        <img id="iconSelectedThumb" alt="" width="40" height="40" hidden />
-        <div>
-          <strong id="iconSelectedCode">ninguno</strong>
-          <div class="meta" id="iconSelectedTitle">Elegí un icono de la grilla</div>
+      <article class="card">
+        <header class="card-head">
+          <h1>Iconos LaMetric</h1>
+          <p class="hint">Buscá y hacé clic para seleccionar. El código (<code>a123</code> / <code>i123</code>) se aplica al último campo de icono enfocado.</p>
+        </header>
+        <div class="row icon-selected-bar" id="iconSelectedBar">
+          <img id="iconSelectedThumb" alt="" width="40" height="40" hidden />
+          <div>
+            <strong id="iconSelectedCode">ninguno</strong>
+            <div class="meta" id="iconSelectedTitle">Elegí un icono de la grilla</div>
+          </div>
+          <button type="button" id="iconApplyBtn" class="secondary" disabled>Aplicar a campos</button>
+          <button type="button" id="iconCopyBtn" class="secondary" disabled>Copiar código</button>
         </div>
-        <button type="button" id="iconApplyBtn" class="secondary" disabled>Aplicar a campos</button>
-        <button type="button" id="iconCopyBtn" class="secondary" disabled>Copiar código</button>
-      </div>
-      <div class="row">
-        <input id="iconSearch" placeholder="Buscar: weather, temp, home…" />
-        <button type="button" id="iconSearchBtn">Buscar</button>
-        <button type="button" id="iconPopularBtn" class="secondary">Populares</button>
-      </div>
-      <p class="msg" id="iconMsg"></p>
-      <div class="icon-grid" id="iconGrid"></div>
-      <div class="row">
-        <button type="button" id="iconPrevBtn" class="secondary" disabled>Anterior</button>
-        <span class="meta" id="iconPageLabel">—</span>
-        <button type="button" id="iconNextBtn" class="secondary" disabled>Siguiente</button>
-      </div>
+        <div class="row">
+          <input id="iconSearch" placeholder="Buscar: weather, temp, home…" />
+          <button type="button" id="iconSearchBtn">Buscar</button>
+          <button type="button" id="iconPopularBtn" class="secondary">Populares</button>
+        </div>
+        <p class="msg" id="iconMsg"></p>
+        <div class="icon-grid" id="iconGrid"></div>
+        <div class="row">
+          <button type="button" id="iconPrevBtn" class="secondary" disabled>Anterior</button>
+          <span class="meta" id="iconPageLabel">—</span>
+          <button type="button" id="iconNextBtn" class="secondary" disabled>Siguiente</button>
+        </div>
+      </article>
     </section>
 
     <section id="tab-queue" class="panel">
-      <h1>Cola → LaMetric</h1>
-      <p class="hint">Elegí una entidad mapeada, prioridad, y encolala. La cola se procesa por prioridad (critical → warning → info).</p>
+      <header class="section-head">
+        <h1>Cola → Relojes</h1>
+        <p class="hint">Elegí una entidad mapeada, prioridad, y encolala. La cola se procesa por prioridad (critical → warning → info).</p>
+      </header>
 
       <div class="queue-layout">
-        <div>
-          <div class="row" style="justify-content:space-between">
-            <h2 style="margin:0">Entidades</h2>
+        <article class="card">
+          <div class="row card-toolbar">
+            <h2>Entidades</h2>
             <button type="button" id="refreshQueueEntities" class="secondary">Actualizar estados</button>
           </div>
           <p class="msg" id="queueMsg"></p>
           <ul id="queueEntityList" class="list"></ul>
-        </div>
+        </article>
 
-        <div>
-          <div class="row" style="justify-content:space-between">
-            <h2 style="margin:0">Cola <span class="meta" id="queueSizeLabel">(0)</span></h2>
-            <button type="button" id="clearQueueBtn" class="danger">Vaciar cola</button>
-          </div>
-          <p class="meta" id="queueCurrentLabel">Enviando: —</p>
-          <div class="priority-board" id="priorityBoard">
-            <div class="priority-lane" data-priority="critical">
-              <header>critical</header>
-              <ul class="lane-list" id="lane-critical"></ul>
+        <div class="stack gap-md">
+          <article class="card card-dark">
+            <div class="row card-toolbar">
+              <h2>Cola <span class="meta" id="queueSizeLabel">(0)</span></h2>
+              <button type="button" id="clearQueueBtn" class="danger">Vaciar cola</button>
             </div>
-            <div class="priority-lane" data-priority="warning">
-              <header>warning</header>
-              <ul class="lane-list" id="lane-warning"></ul>
+            <p class="meta current-send" id="queueCurrentLabel">Enviando: —</p>
+            <div class="priority-board" id="priorityBoard">
+              <div class="priority-lane" data-priority="critical">
+                <header>critical</header>
+                <ul class="lane-list" id="lane-critical"></ul>
+              </div>
+              <div class="priority-lane" data-priority="warning">
+                <header>warning</header>
+                <ul class="lane-list" id="lane-warning"></ul>
+              </div>
+              <div class="priority-lane" data-priority="info">
+                <header>info</header>
+                <ul class="lane-list" id="lane-info"></ul>
+              </div>
             </div>
-            <div class="priority-lane" data-priority="info">
-              <header>info</header>
-              <ul class="lane-list" id="lane-info"></ul>
-            </div>
-          </div>
+          </article>
 
-          <h2>Últimos envíos</h2>
-          <ul id="queueRecentList" class="list compact"></ul>
+          <article class="card">
+            <h2>Últimos envíos</h2>
+            <ul id="queueRecentList" class="list compact"></ul>
+          </article>
         </div>
       </div>
     </section>
 
     <section id="tab-apps" class="panel">
-      <h1>Aplicaciones</h1>
-      <p class="hint">Cada app de la LAN usa un API key en el header <code>X-API-Key</code>.</p>
-      <form id="appForm" class="row">
-        <input name="name" placeholder="Nombre de la app" required />
-        <button type="submit">Crear</button>
-      </form>
-      <p class="msg" id="appMsg"></p>
-      <ul id="appList" class="list"></ul>
+      <article class="card">
+        <header class="card-head">
+          <h1>Aplicaciones</h1>
+          <p class="hint">Cada app de la LAN usa un API key en el header <code>X-API-Key</code>.</p>
+        </header>
+        <form id="appForm" class="row">
+          <input name="name" placeholder="Nombre de la app" required />
+          <button type="submit" class="btn-lime">Crear</button>
+        </form>
+        <p class="msg" id="appMsg"></p>
+        <ul id="appList" class="list"></ul>
+      </article>
     </section>
 
     <section id="tab-channels" class="panel">
-      <h1>Canales / frames</h1>
-      <p class="hint">Frames persistentes expuestos en <code>/lametric/frames</code> para el Indicator App.</p>
-      <form id="channelForm" class="row">
-        <input name="name" placeholder="Nombre del canal" required />
-        <input name="sort_order" type="number" value="0" style="width:6rem" />
-        <button type="submit">Crear canal</button>
-      </form>
-      <ul id="channelList" class="list"></ul>
+      <article class="card">
+        <header class="card-head">
+          <h1>Canales / frames</h1>
+          <p class="hint">Frames persistentes expuestos en <code>/lametric/frames</code> para el Indicator App.</p>
+        </header>
+        <form id="channelForm" class="row">
+          <input name="name" placeholder="Nombre del canal" required />
+          <input name="sort_order" type="number" value="0" style="width:6rem" />
+          <button type="submit">Crear canal</button>
+        </form>
+        <ul id="channelList" class="list"></ul>
+      </article>
     </section>
 
     <section id="tab-ha" class="panel">
-      <h1>Home Assistant</h1>
-      <form id="haForm" class="stack">
-        <label>URL
-          <input name="baseUrl" placeholder="http://192.168.1.10:8123" required />
-        </label>
-        <label>Long-lived access token
-          <input name="token" type="password" required />
-        </label>
-        <div class="row">
-          <button type="submit">Guardar</button>
-          <button type="button" id="haTest" class="secondary">Probar</button>
-        </div>
-        <p class="msg" id="haMsg"></p>
-      </form>
+      <div class="widget-grid two-col">
+        <article class="card card-dark">
+          <header class="card-head">
+            <h1>Home Assistant</h1>
+            <p class="hint">Conexión al hub local.</p>
+          </header>
+          <form id="haForm" class="stack">
+            <label>URL
+              <input name="baseUrl" placeholder="http://192.168.1.10:8123" required />
+            </label>
+            <label>Long-lived access token
+              <input name="token" type="password" required />
+            </label>
+            <div class="row">
+              <button type="submit">Guardar</button>
+              <button type="button" id="haTest" class="secondary">Probar</button>
+            </div>
+            <p class="msg" id="haMsg"></p>
+          </form>
+        </article>
 
-      <h2>Entidades</h2>
-      <div class="row">
-        <input id="haSearch" placeholder="Buscar entidad…" />
-        <button type="button" id="haSearchBtn" class="secondary">Buscar</button>
+        <article class="card">
+          <header class="card-head">
+            <h2>Buscar entidades</h2>
+          </header>
+          <div class="row">
+            <input id="haSearch" placeholder="Buscar entidad…" />
+            <button type="button" id="haSearchBtn" class="secondary">Buscar</button>
+          </div>
+          <ul id="haStates" class="list compact"></ul>
+        </article>
       </div>
-      <ul id="haStates" class="list compact"></ul>
 
-      <form id="haEntityForm" class="stack">
-        <label>Entity ID
-          <input name="entity_id" required placeholder="sensor.temperature" />
-        </label>
-        <label>Modo
-          <select name="mode">
-            <option value="frame">Frame persistente</option>
-            <option value="notify">Notificar al cambiar</option>
-          </select>
-        </label>
-        <label>Template
-          <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
-        </label>
-        <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
-        <label>Icon
-          <input name="icon" class="icon-field" value="a2867" />
-        </label>
-        <div class="row">
-          <label>Prioridad
-            <select name="priority">
-              <option value="critical" selected>critical</option>
-              <option value="warning">warning</option>
-              <option value="info">info</option>
+      <article class="card">
+        <header class="card-head">
+          <h2>Agregar entidad</h2>
+        </header>
+        <form id="haEntityForm" class="stack">
+          <label>Entity ID
+            <input name="entity_id" required placeholder="sensor.temperature" />
+          </label>
+          <label>Modo
+            <select name="mode">
+              <option value="frame">Frame persistente</option>
+              <option value="notify">Notificar al cambiar</option>
             </select>
           </label>
-          <label>Cada N seg. (vacío = off)
-            <input name="interval_sec" type="number" min="10" placeholder="ej. 300" />
+          <label>Template
+            <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
           </label>
-          <label>Δ mínimo
-            <input name="min_delta" type="number" min="0" step="0.1" placeholder="ej. 2" />
+          <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
+          <label>Icon
+            <input name="icon" class="icon-field" value="a2867" />
           </label>
-          <label>Si valor &gt;
-            <input name="when_gt" type="number" step="0.1" placeholder="ej. 30" />
+          <div class="row">
+            <label>Prioridad
+              <select name="priority">
+                <option value="critical" selected>critical</option>
+                <option value="warning">warning</option>
+                <option value="info">info</option>
+              </select>
+            </label>
+            <label>Cada N seg. (vacío = off)
+              <input name="interval_sec" type="number" min="10" placeholder="ej. 300" />
+            </label>
+            <label>Δ mínimo
+              <input name="min_delta" type="number" min="0" step="0.1" placeholder="ej. 2" />
+            </label>
+            <label>Si valor &gt;
+              <input name="when_gt" type="number" step="0.1" placeholder="ej. 30" />
+            </label>
+            <label>Si valor &lt;
+              <input name="when_lt" type="number" step="0.1" placeholder="ej. 5" />
+            </label>
+          </div>
+          <label class="check">
+            <input name="sound" type="checkbox" />
+            Sonido al notificar
           </label>
-          <label>Si valor &lt;
-            <input name="when_lt" type="number" step="0.1" placeholder="ej. 5" />
+          <label>Reloj
+            <select name="device_id" id="haDeviceSelect">
+              <option value="">Todos</option>
+            </select>
           </label>
-        </div>
-        <label class="check">
-          <input name="sound" type="checkbox" />
-          Sonido al notificar
-        </label>
-        <label>Reloj
-          <select name="device_id" id="haDeviceSelect">
-            <option value="">Todos</option>
-          </select>
-        </label>
-        <label>Canal (para mode=frame en LaMetric)
-          <select name="channel_id" id="haChannelSelect">
-            <option value="">—</option>
-          </select>
-        </label>
-        <button type="submit">Agregar entidad</button>
-      </form>
-      <ul id="haEntityList" class="list"></ul>
+          <label>Canal (para mode=frame en LaMetric)
+            <select name="channel_id" id="haChannelSelect">
+              <option value="">—</option>
+            </select>
+          </label>
+          <button type="submit" class="btn-lime">Agregar entidad</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <header class="card-head">
+          <h2>Entidades mapeadas</h2>
+        </header>
+        <ul id="haEntityList" class="list"></ul>
+      </article>
     </section>
 
     <section id="tab-logs" class="panel">
-      <h1>Últimas notificaciones</h1>
-      <button type="button" id="refreshLogs" class="secondary">Actualizar</button>
-      <ul id="logList" class="list"></ul>
+      <article class="card">
+        <div class="row card-toolbar">
+          <h1>Últimas notificaciones</h1>
+          <button type="button" id="refreshLogs" class="secondary">Actualizar</button>
+        </div>
+        <ul id="logList" class="list"></ul>
+      </article>
     </section>
   </main>
 

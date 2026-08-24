@@ -43,13 +43,32 @@ $$("#tabs button").forEach((btn) => {
 
 async function refreshStatus() {
   const s = await api("/panel/api/status");
-  const clocks = (s.devices || [])
-    .map((d) => `${d.name} (${d.slug})`)
-    .join(", ") || "sin relojes";
+  const devices = s.devices || [];
+  const clocks = devices.map((d) => `${d.name} (${d.slug})`).join(", ") || "sin relojes";
   const ha = s.ha.configured
     ? `HA ${s.ha.connected ? "conectado" : "idle"}`
     : "HA no configurado";
   $("#statusLine").textContent = `${clocks} · ${ha} · cola ${s.queue} · ${s.apps} apps · ${s.channels} canales`;
+
+  const n = devices.length;
+  $("#statDeviceValue").textContent = n ? String(n) : "—";
+  $("#statDeviceMeta").textContent = n
+    ? devices.map((d) => d.slug).join(", ")
+    : "sin configurar";
+  $("#statDeviceDot").dataset.state = n ? "on" : "off";
+
+  const haOk = !!s.ha.configured;
+  const haLive = !!s.ha.connected;
+  $("#statHaValue").textContent = haOk ? (haLive ? "Live" : "Idle") : "—";
+  $("#statHaMeta").textContent = haOk
+    ? haLive
+      ? "conectado"
+      : "configurado"
+    : "sin configurar";
+  $("#statHaDot").dataset.state = haLive ? "on" : haOk ? "warn" : "off";
+
+  $("#statQueueValue").textContent = String(s.queue ?? 0);
+  $("#statAppsValue").textContent = `${s.apps ?? 0} · ${s.channels ?? 0}`;
 }
 
 let cachedDevices = [];
