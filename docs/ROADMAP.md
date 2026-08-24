@@ -9,6 +9,7 @@
 - PRODUCT-00002: LaMetric device config from `LAMETRIC_DEVICE_IP` / `LAMETRIC_API_KEY` env
 - PRODUCT-00003: Dual clocks — named LaMetric + Ulanzi (AWTRIX), HA sensor targeting, brightness from the panel
 - PRODUCT-00002: Panel UI modular widget/card style deployed to `lametric.lan`
+- PRODUCT-00002: Panel color scheme → dark + neon purple accents
 
 ## Next
 
