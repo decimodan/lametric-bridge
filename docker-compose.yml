@@ -1,0 +1,40 @@
+# Dokploy compose (Compose path: docker-compose.yml).
+#
+# Front: http://lametric.lan → Traefik of the Dokploy VM (192.168.50.230:80).
+# TLS is not used on .lan. Do not publish host ports: scavenger already binds 8787.
+#
+# mDNS (.local) does not resolve inside Docker. Point AWTRIX_BASE_URL at the
+# clock's LAN IP (Ulanzi TC001: 192.168.50.98).
+
+services:
+  lametric-bridge:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      BRIDGE_HOST: ${BRIDGE_HOST:-0.0.0.0}
+      BRIDGE_PORT: ${BRIDGE_PORT:-8787}
+      AWTRIX_BASE_URL: ${AWTRIX_BASE_URL:-http://192.168.50.98}
+      AWTRIX_USER: ${AWTRIX_USER:-}
+      AWTRIX_PASS: ${AWTRIX_PASS:-}
+      BRIDGE_TOKEN: ${BRIDGE_TOKEN:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "awtrixng-314d94.local:192.168.50.98"
+    expose:
+      - "8787"
+    networks:
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.http.routers.lametric-bridge.rule=Host(`lametric.lan`)
+      - traefik.http.routers.lametric-bridge.entrypoints=web
+      - traefik.http.routers.lametric-bridge.service=lametric-bridge
+      - traefik.http.services.lametric-bridge.loadbalancer.server.port=8787
+
+networks:
+  dokploy-network:
+    external: true
+    name: ${DOKPLOY_NETWORK:-dokploy-network}
