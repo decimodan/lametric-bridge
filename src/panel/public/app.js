@@ -45,6 +45,24 @@ async function refreshStatus() {
     ? `HA ${s.ha.connected ? "conectado" : "idle"}`
     : "HA no configurado";
   $("#statusLine").textContent = `${device} · ${ha} · cola ${s.queue} · ${s.apps} apps · ${s.channels} canales`;
+
+  const deviceOk = !!s.device.configured;
+  $("#statDeviceValue").textContent = deviceOk ? (s.device.host || "OK") : "—";
+  $("#statDeviceMeta").textContent = deviceOk ? "configurado" : "sin configurar";
+  $("#statDeviceDot").dataset.state = deviceOk ? "on" : "off";
+
+  const haOk = !!s.ha.configured;
+  const haLive = !!s.ha.connected;
+  $("#statHaValue").textContent = haOk ? (haLive ? "Live" : "Idle") : "—";
+  $("#statHaMeta").textContent = haOk
+    ? haLive
+      ? "conectado"
+      : "configurado"
+    : "sin configurar";
+  $("#statHaDot").dataset.state = haLive ? "on" : haOk ? "warn" : "off";
+
+  $("#statQueueValue").textContent = String(s.queue ?? 0);
+  $("#statAppsValue").textContent = `${s.apps ?? 0} · ${s.channels ?? 0}`;
 }
 
 /* Device */

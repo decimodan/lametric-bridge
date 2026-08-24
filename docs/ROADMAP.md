@@ -7,6 +7,7 @@
 - PRODUCT-00002: Deployed on Dokploy project `lametric-bridge` (app `lametric-bridge-qqkxjg`, branch `PRODUCT-00002`, Postgres DB `lametric_bridge`, host `lametric-bridge.local`)
 - PRODUCT-00002: Kept LAN-only — Dokploy domain `lametric.lan` (HTTP); router DNS `lametric.lan` → `192.168.50.230`
 - PRODUCT-00002: LaMetric device config from `LAMETRIC_DEVICE_IP` / `LAMETRIC_API_KEY` env
+- PRODUCT-00002: Panel UI refactor to modular widget/card style (status grid + rounded cards)
 
 ## Next
 

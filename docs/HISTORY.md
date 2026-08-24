@@ -2,6 +2,12 @@
 
 # Decisions made
 
+## 2026-08-24 — Panel UI: modular widget style
+
+- Refactored the web panel to a modular card/widget layout inspired by premium watch/dashboard UIs.
+- Light neutral canvas with mixed white / charcoal / coral cards, large radii, lime accent for primary actions and live status.
+- Status overview widgets on the LaMetric tab (device, HA, queue, apps/channels); forms grouped into interactive cards.
+
 ## 2026-08-07 — PRODUCT-00002 architecture
 
 - Single Node/TypeScript Fastify service for ingest, panel, and adapters.
