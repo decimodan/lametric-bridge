@@ -1,59 +1,7 @@
-import { config, lametricFromEnv } from "../config.js";
-import { query, type LametricDeviceRow } from "../db/index.js";
-import { decryptSecret, encryptSecret } from "../db/crypto.js";
+import type { Device } from "../services/devices.js";
+import { touchDevice } from "../services/devices.js";
 import type { Message, Priority } from "../services/render.js";
 import { lanFetch } from "./lanFetch.js";
-
-export type DeviceConfig = {
-  host: string;
-  apiKey: string;
-  lastSeen: string | Date | null;
-  source: "env" | "db";
-};
-
-async function deviceRow(): Promise<LametricDeviceRow | undefined> {
-  const res = await query<LametricDeviceRow>(
-    "SELECT * FROM lametric_device WHERE id = 1",
-  );
-  return res.rows[0];
-}
-
-export async function getDeviceConfig(): Promise<DeviceConfig | null> {
-  if (lametricFromEnv()) {
-    const row = await deviceRow();
-    return {
-      host: config.lametricDeviceIp.replace(/\/$/, ""),
-      apiKey: config.lametricApiKey,
-      lastSeen: row?.last_seen ?? null,
-      source: "env",
-    };
-  }
-
-  const row = await deviceRow();
-  if (!row) return null;
-  return {
-    host: row.host,
-    apiKey: decryptSecret(row.api_key_enc),
-    lastSeen: row.last_seen,
-    source: "db",
-  };
-}
-
-export async function saveDeviceConfig(host: string, apiKey: string): Promise<void> {
-  if (lametricFromEnv()) {
-    throw new Error(
-      "LaMetric device is managed via LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY",
-    );
-  }
-  await query(
-    `INSERT INTO lametric_device (id, host, api_key_enc, last_seen)
-     VALUES (1, $1, $2, NULL)
-     ON CONFLICT (id) DO UPDATE SET
-       host = EXCLUDED.host,
-       api_key_enc = EXCLUDED.api_key_enc`,
-    [host.replace(/\/$/, ""), encryptSecret(apiKey)],
-  );
-}
 
 function authHeader(apiKey: string): string {
   return `Basic ${Buffer.from(`dev:${apiKey}`).toString("base64")}`;
@@ -65,7 +13,6 @@ function candidateBases(host: string): string[] {
     return [cleaned];
   }
   // Official local API: HTTPS :4343 and HTTP :8080.
-  // Bare :80/:443 return misleading 401s and are not used.
   return [`https://${cleaned}:4343`, `http://${cleaned}:8080`];
 }
 
@@ -88,48 +35,42 @@ function formatLametricError(status: number, base: string, text: string): string
   return `HTTP ${status} from ${base}: ${snippet}`;
 }
 
-async function touchLastSeen(): Promise<void> {
-  if (lametricFromEnv()) {
-    await query(
-      `INSERT INTO lametric_device (id, host, api_key_enc, last_seen)
-       VALUES (1, $1, $2, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         host = EXCLUDED.host,
-         last_seen = NOW()`,
-      [
-        config.lametricDeviceIp.replace(/\/$/, ""),
-        encryptSecret(config.lametricApiKey),
-      ],
-    );
-    return;
-  }
-  await query("UPDATE lametric_device SET last_seen = NOW() WHERE id = 1");
-}
-
-export async function testConnection(): Promise<{ ok: boolean; detail: string }> {
-  const device = await getDeviceConfig();
-  if (!device) {
-    return { ok: false, detail: "LaMetric device is not configured" };
-  }
-
-  let lastError = "unknown error";
+async function requestLametric(
+  device: Device,
+  path: string,
+  init: { method?: string; body?: string } = {},
+): Promise<{ ok: boolean; status: number; text: string; base: string }> {
+  let last = { ok: false, status: 0, text: "unknown error", base: "" };
   for (const base of candidateBases(device.host)) {
     try {
-      const res = await lanFetch(`${base}/api/v2/device`, {
-        method: "GET",
-        headers: { Authorization: authHeader(device.apiKey) },
-      });
-      if (res.ok) {
-        await touchLastSeen();
-        return { ok: true, detail: `Connected via ${base}` };
+      const headers: Record<string, string> = {
+        Authorization: authHeader(device.apiKey),
+      };
+      if (init.body) {
+        headers["Content-Type"] = "application/json";
+        headers["Content-Length"] = String(Buffer.byteLength(init.body));
       }
-      lastError = formatLametricError(res.status, base, res.text);
+      const res = await lanFetch(`${base}${path}`, {
+        method: init.method ?? "GET",
+        headers,
+        body: init.body,
+      });
+      last = { ...res, base };
+      if (res.ok) {
+        await touchDevice(device.id);
+        return last;
+      }
+      last.text = formatLametricError(res.status, base, res.text);
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      last = {
+        ok: false,
+        status: 0,
+        text: err instanceof Error ? err.message : String(err),
+        base,
+      };
     }
   }
-
-  return { ok: false, detail: lastError };
+  return last;
 }
 
 function mapPriority(priority: Priority = "info"): string {
@@ -138,14 +79,20 @@ function mapPriority(priority: Priority = "info"): string {
   return "info";
 }
 
-export async function sendNotification(
+export async function testLametric(
+  device: Device,
+): Promise<{ ok: boolean; detail: string }> {
+  const res = await requestLametric(device, "/api/v2/device");
+  if (res.ok) {
+    return { ok: true, detail: `Connected via ${res.base}` };
+  }
+  return { ok: false, detail: res.text };
+}
+
+export async function sendToLametric(
+  device: Device,
   message: Message,
 ): Promise<{ ok: boolean; detail: string }> {
-  const device = await getDeviceConfig();
-  if (!device) {
-    return { ok: false, detail: "LaMetric device is not configured" };
-  }
-
   const payload = {
     priority: mapPriority(message.priority),
     icon_type: message.priority === "critical" ? "alert" : "info",
@@ -172,29 +119,60 @@ export async function sendNotification(
     },
   };
 
-  const body = JSON.stringify(payload);
-  let lastError = "unknown error";
-
-  for (const base of candidateBases(device.host)) {
-    try {
-      const res = await lanFetch(`${base}/api/v2/device/notifications`, {
-        method: "POST",
-        headers: {
-          Authorization: authHeader(device.apiKey),
-          "Content-Type": "application/json",
-          "Content-Length": String(Buffer.byteLength(body)),
-        },
-        body,
-      });
-      if (res.ok) {
-        await touchLastSeen();
-        return { ok: true, detail: `Sent via ${base}` };
-      }
-      lastError = formatLametricError(res.status, base, res.text);
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
+  const res = await requestLametric(device, "/api/v2/device/notifications", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    return { ok: true, detail: `Sent to ${device.slug} via ${res.base}` };
   }
+  return { ok: false, detail: res.text };
+}
 
-  return { ok: false, detail: lastError };
+export async function getLametricStatus(device: Device): Promise<{
+  ok: boolean;
+  brightness?: number;
+  autoBrightness?: boolean;
+  power?: boolean;
+  detail: string;
+}> {
+  const res = await requestLametric(device, "/api/v2/device");
+  if (!res.ok) {
+    return { ok: false, detail: res.text };
+  }
+  try {
+    const body = JSON.parse(res.text) as {
+      display?: { brightness?: number; brightness_mode?: string };
+    };
+    const brightness = Number(body.display?.brightness ?? 0);
+    return {
+      ok: true,
+      brightness: Number.isFinite(brightness) ? brightness : 0,
+      autoBrightness: body.display?.brightness_mode === "auto",
+      power: true,
+      detail: "ok",
+    };
+  } catch {
+    return { ok: false, detail: "Invalid device payload" };
+  }
+}
+
+export async function setLametricBrightness(
+  device: Device,
+  percent: number,
+  autoBrightness?: boolean,
+): Promise<{ ok: boolean; detail: string }> {
+  const brightness = Math.max(0, Math.min(100, Math.round(percent)));
+  const payload: Record<string, unknown> = {
+    brightness,
+    brightness_mode: autoBrightness ? "auto" : "manual",
+  };
+  const res = await requestLametric(device, "/api/v2/device", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    return { ok: true, detail: `Brillo ${brightness}%` };
+  }
+  return { ok: false, detail: res.text };
 }

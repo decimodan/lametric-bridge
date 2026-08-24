@@ -39,6 +39,7 @@ export type HaEntityRow = {
   when_lt: number | null;
   last_value: string | null;
   last_sent_at: string | Date | null;
+  device_id: string | null;
 };
 
 export type ChannelRow = {

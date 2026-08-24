@@ -1,12 +1,13 @@
 # lametric-bridge
 
-Bridge entre aplicaciones locales / Home Assistant y un reloj [LaMetric Time](https://lametric.com/).
+Bridge entre aplicaciones locales / Home Assistant y relojes [LaMetric Time](https://lametric.com/) / [AWTRIX](https://blueforcer.github.io/awtrix-light/) (Ulanzi TC001).
 
 ## Qué hace
 
 - Recibe notificaciones y frames desde apps de la LAN (`X-API-Key`)
 - Integra Home Assistant (WebSocket + polling fallback)
-- Envía notificaciones a la Local API del LaMetric
+- Envía notificaciones a LaMetric y/o Ulanzi (AWTRIX), identificables por slug
+- Controla brillo desde el panel
 - Expone frames persistentes en `/lametric/frames` para un Indicator App
 - Panel web de configuración (basic auth)
 
@@ -41,7 +42,7 @@ docker compose up --build
 curl -X POST http://localhost:3000/api/v1/notify \
   -H "Content-Type: application/json" \
   -H "X-API-Key: lb_..." \
-  -d '{"text":"hola","priority":"info"}'
+    -d '{"text":"hola","priority":"info","device":"ulanzi"}'
 ```
 
 Health: `GET /api/v1/health`

@@ -2,7 +2,9 @@ import { v4 as uuid } from "uuid";
 import WebSocket from "ws";
 import { query, type HaConfigRow, type HaEntityRow } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../db/crypto.js";
+import { pushAwtrixApp } from "./awtrix.js";
 import { upsertFrame } from "../services/channels.js";
+import { getDevice, listDevices, resolveDevices } from "../services/devices.js";
 import { enqueue, queueSize } from "../services/queue.js";
 import { renderTemplate } from "../services/render.js";
 
@@ -65,12 +67,12 @@ export async function upsertHaEntity(input: {
   min_delta?: number | null;
   when_gt?: number | null;
   when_lt?: number | null;
+  device_id?: string | null;
 }): Promise<HaEntityRow> {
   const id = input.id ?? uuid();
-  const existingRes = await query<HaEntityRow>(
-    "SELECT * FROM ha_entities WHERE id = $1 OR entity_id = $2",
-    [id, input.entity_id],
-  );
+  const existingRes = input.id
+    ? await query<HaEntityRow>("SELECT * FROM ha_entities WHERE id = $1", [input.id])
+    : { rows: [] as HaEntityRow[] };
   const existing = existingRes.rows[0];
 
   const priority = input.priority ?? existing?.priority ?? "info";
@@ -87,6 +89,12 @@ export async function upsertHaEntity(input: {
     input.when_gt === undefined ? (existing?.when_gt ?? null) : input.when_gt;
   const whenLt =
     input.when_lt === undefined ? (existing?.when_lt ?? null) : input.when_lt;
+  const deviceId =
+    input.device_id === undefined
+      ? (existing?.device_id ?? null)
+      : input.device_id
+        ? ((await getDevice(input.device_id))?.id ?? null)
+        : null;
 
   if (existing) {
     await query(
@@ -102,8 +110,9 @@ export async function upsertHaEntity(input: {
          interval_sec = $9,
          min_delta = $10,
          when_gt = $11,
-         when_lt = $12
-       WHERE id = $13`,
+         when_lt = $12,
+         device_id = $13
+       WHERE id = $14`,
       [
         input.entity_id,
         input.mode,
@@ -117,6 +126,7 @@ export async function upsertHaEntity(input: {
         minDelta,
         whenGt,
         whenLt,
+        deviceId,
         existing.id,
       ],
     );
@@ -130,8 +140,8 @@ export async function upsertHaEntity(input: {
   await query(
     `INSERT INTO ha_entities (
        id, entity_id, mode, template, icon, channel_id, enabled,
-       priority, sound, interval_sec, min_delta, when_gt, when_lt
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+       priority, sound, interval_sec, min_delta, when_gt, when_lt, device_id
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
     [
       id,
       input.entity_id,
@@ -146,6 +156,7 @@ export async function upsertHaEntity(input: {
       minDelta,
       whenGt,
       whenLt,
+      deviceId,
     ],
   );
 
@@ -304,17 +315,31 @@ async function emitEntity(
       priority: mapping.priority ?? "info",
       sound: mapping.sound ?? false,
       source: `${sourcePrefix}:${mapping.entity_id}`,
+      deviceId: mapping.device_id ?? undefined,
     });
     await markEntitySent(mapping.id, state);
     return true;
   }
 
-  if (mapping.channel_id) {
-    await upsertFrame(mapping.channel_id, text, mapping.icon);
-    await markEntitySent(mapping.id, state);
-    return true;
+  const targets = await resolveDevices(mapping.device_id);
+  let sent = false;
+  for (const device of targets) {
+    if (device.kind === "awtrix") {
+      const result = await pushAwtrixApp(
+        device,
+        `ha-${mapping.entity_id}`,
+        text,
+        mapping.icon,
+      );
+      if (result.ok) sent = true;
+      else console.error("AWTRIX HA frame error", result.detail);
+    } else if (mapping.channel_id) {
+      await upsertFrame(mapping.channel_id, text, mapping.icon);
+      sent = true;
+    }
   }
-  return false;
+  if (sent) await markEntitySent(mapping.id, state);
+  return sent;
 }
 
 async function handleState(
@@ -326,15 +351,16 @@ async function handleState(
     "SELECT * FROM ha_entities WHERE entity_id = $1 AND enabled = TRUE",
     [entityId],
   );
-  const mapping = res.rows[0];
-  if (!mapping) return;
+  const mappings = res.rows;
+  if (!mappings.length) return;
 
-  // Notify + interval: cadence is owned by the interval ticker (avoid flood).
-  // Frames still update on change so the channel stays fresh.
-  if (mapping.mode === "notify" && isIntervalDriven(mapping)) return;
-
-  if (!shouldEmitForStateChange(mapping, state)) return;
-  await emitEntity(mapping, state, attributes, "ha");
+  for (const mapping of mappings) {
+    // Notify + interval: cadence is owned by the interval ticker (avoid flood).
+    // Frames still update on change so the channel stays fresh.
+    if (mapping.mode === "notify" && isIntervalDriven(mapping)) continue;
+    if (!shouldEmitForStateChange(mapping, state)) continue;
+    await emitEntity(mapping, state, attributes, "ha");
+  }
 }
 
 async function tickIntervalEntities(): Promise<void> {
@@ -422,6 +448,7 @@ export async function enqueueHaEntity(
     priority,
     sound,
     source: `panel:ha:${mapping.entity_id}`,
+    deviceId: mapping.device_id ?? undefined,
   });
   await markEntitySent(mapping.id, state.state);
 
@@ -449,12 +476,16 @@ export async function previewHaEntities(): Promise<
     when_lt: number | null;
     last_value: string | null;
     last_sent_at: string | Date | null;
+    device_id: string | null;
+    device_name: string | null;
     state: string | null;
     friendly_name: string | null;
     preview: string | null;
   }>
 > {
   const entities = await listHaEntities();
+  const devices = await listDevices();
+  const deviceById = new Map(devices.map((d) => [d.id, d]));
   let states: Array<{
     entity_id: string;
     state: string;
@@ -492,6 +523,10 @@ export async function previewHaEntities(): Promise<
       when_lt: ent.when_lt,
       last_value: ent.last_value,
       last_sent_at: ent.last_sent_at,
+      device_id: ent.device_id,
+      device_name: ent.device_id
+        ? (deviceById.get(ent.device_id)?.name ?? null)
+        : "todos",
       state: s?.state ?? null,
       friendly_name: s
         ? String(s.attributes?.friendly_name ?? "") || null

@@ -4,6 +4,13 @@ import fastifyBasicAuth from "@fastify/basic-auth";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import {
+  dispatchNotification,
+  getDeviceStatus,
+  identifyDevice,
+  setDeviceBrightness,
+  testDevice,
+} from "../adapters/clocks.js";
 import { searchLametricIcons } from "../adapters/lametricIcons.js";
 import {
   deleteHaEntity,
@@ -18,13 +25,7 @@ import {
   testHaConnection,
   upsertHaEntity,
 } from "../adapters/homeAssistant.js";
-import {
-  getDeviceConfig,
-  saveDeviceConfig,
-  sendNotification,
-  testConnection,
-} from "../adapters/lametric.js";
-import { config, lametricFromEnv } from "../config.js";
+import { config } from "../config.js";
 import {
   createApp,
   deleteApp,
@@ -38,6 +39,13 @@ import {
   updateChannel,
   upsertFrame,
 } from "../services/channels.js";
+import {
+  deleteDevice,
+  getDevice,
+  listDevices,
+  publicDevice,
+  saveDevice,
+} from "../services/devices.js";
 import {
   clearQueue,
   getCurrentQueueItem,
@@ -74,20 +82,13 @@ export async function registerPanelRoutes(app: FastifyInstance): Promise<void> {
 
 function registerPanelApi(app: FastifyInstance): void {
   app.get("/panel/api/status", async () => {
-    const d = await getDeviceConfig();
+    const devices = await listDevices();
     const cfg = await getHaConfig();
     const status = await haStatus();
     const apps = await listApps();
     const channels = await listChannels();
     return {
-      device: d
-        ? {
-            host: d.host,
-            lastSeen: d.lastSeen,
-            configured: true,
-            source: d.source,
-          }
-        : { configured: false },
+      devices: devices.map(publicDevice),
       ha: {
         ...status,
         baseUrl: cfg?.baseUrl ?? null,
@@ -133,40 +134,133 @@ function registerPanelApi(app: FastifyInstance): void {
     cleared: clearQueue(),
   }));
 
-  app.get("/panel/api/device", async () => {
-    const d = await getDeviceConfig();
-    if (!d) return { configured: false };
-    return {
-      configured: true,
-      host: d.host,
-      lastSeen: d.lastSeen,
-      source: d.source,
-    };
-  });
+  app.get("/panel/api/devices", async () => ({
+    devices: (await listDevices()).map(publicDevice),
+  }));
 
-  app.put("/panel/api/device", async (request, reply) => {
-    if (lametricFromEnv()) {
-      return reply.code(409).send({
-        error:
-          "LaMetric device is managed via LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY",
-      });
-    }
+  app.post("/panel/api/devices", async (request, reply) => {
     const parsed = z
       .object({
+        slug: z.string().min(1).max(32),
+        name: z.string().min(1).max(64),
+        kind: z.enum(["lametric", "awtrix"]),
         host: z.string().min(1),
-        apiKey: z.string().min(1),
+        apiKey: z.string().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
-    await saveDeviceConfig(parsed.data.host, parsed.data.apiKey);
-    return { ok: true };
+    try {
+      const device = await saveDevice(parsed.data);
+      return { device: publicDevice(device) };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
-  app.post("/panel/api/device/test", async () => testConnection());
+  app.patch("/panel/api/devices/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await getDevice(id);
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    const parsed = z
+      .object({
+        slug: z.string().min(1).max(32).optional(),
+        name: z.string().min(1).max(64).optional(),
+        host: z.string().min(1).optional(),
+        apiKey: z.string().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const device = await saveDevice({
+        id: existing.id,
+        slug: parsed.data.slug ?? existing.slug,
+        name: parsed.data.name ?? existing.name,
+        kind: existing.kind,
+        host: parsed.data.host ?? existing.host,
+        apiKey: parsed.data.apiKey,
+      });
+      return { device: publicDevice(device) };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
 
-  app.post("/panel/api/device/notify", async (request, reply) => {
+  app.delete("/panel/api/devices/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      if (!(await deleteDevice(id))) {
+        return reply.code(404).send({ error: "Not found" });
+      }
+      return { ok: true };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.get("/panel/api/devices/:id/status", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await getDeviceStatus(id);
+    if (!result.ok && result.detail === "Device not found") {
+      return reply.code(404).send(result);
+    }
+    return result;
+  });
+
+  app.post("/panel/api/devices/:id/test", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await testDevice(id);
+    if (!result.ok && result.detail === "Device not found") {
+      return reply.code(404).send(result);
+    }
+    return result;
+  });
+
+  app.post("/panel/api/devices/:id/identify", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await identifyDevice(id);
+    await logNotify(
+      "identify",
+      `Soy ${id}`,
+      "critical",
+      result.ok ? "ok" : "error",
+      result.detail,
+    );
+    return result;
+  });
+
+  app.patch("/panel/api/devices/:id/brightness", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = z
+      .object({
+        brightness: z.number().min(0).max(100),
+        autoBrightness: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const result = await setDeviceBrightness(
+      id,
+      parsed.data.brightness,
+      parsed.data.autoBrightness,
+    );
+    return result;
+  });
+
+  app.post("/panel/api/devices/:id/notify", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const device = await getDevice(id);
+    if (!device) return reply.code(404).send({ error: "Not found" });
     const parsed = z
       .object({
         text: z.string().min(1).max(256),
@@ -178,14 +272,46 @@ function registerPanelApi(app: FastifyInstance): void {
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
-
     const body = parsed.data;
-    const result = await sendNotification({
+    const result = await dispatchNotification({
       text: body.text,
       icon: body.icon,
       priority: body.priority ?? "info",
       sound: body.sound,
       source: "panel",
+      deviceId: device.id,
+    });
+    await logNotify(
+      "panel",
+      body.text,
+      body.priority ?? "info",
+      result.ok ? "ok" : "error",
+      result.detail,
+    );
+    return result;
+  });
+
+  app.post("/panel/api/notify", async (request, reply) => {
+    const parsed = z
+      .object({
+        text: z.string().min(1).max(256),
+        icon: z.string().max(64).optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        device: z.string().min(1).max(64).optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const body = parsed.data;
+    const result = await dispatchNotification({
+      text: body.text,
+      icon: body.icon,
+      priority: body.priority ?? "info",
+      sound: body.sound,
+      source: "panel",
+      deviceId: body.device,
     });
     await logNotify(
       "panel",
@@ -367,6 +493,7 @@ function registerPanelApi(app: FastifyInstance): void {
         min_delta: z.number().nonnegative().nullable().optional(),
         when_gt: z.number().nullable().optional(),
         when_lt: z.number().nullable().optional(),
+        device_id: z.string().min(1).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -391,6 +518,7 @@ function registerPanelApi(app: FastifyInstance): void {
         min_delta: z.number().nonnegative().nullable().optional(),
         when_gt: z.number().nullable().optional(),
         when_lt: z.number().nullable().optional(),
+        device_id: z.string().min(1).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -432,6 +560,10 @@ function registerPanelApi(app: FastifyInstance): void {
         parsed.data.when_lt === undefined
           ? existing.when_lt
           : parsed.data.when_lt,
+      device_id:
+        parsed.data.device_id === undefined
+          ? existing.device_id
+          : parsed.data.device_id,
     });
     return { entity };
   });

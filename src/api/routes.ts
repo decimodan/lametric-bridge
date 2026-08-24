@@ -7,6 +7,7 @@ import {
   listChannels,
   upsertFrame,
 } from "../services/channels.js";
+import { listDevices, publicDevice } from "../services/devices.js";
 import { checkRateLimit, enqueue, queueSize } from "../services/queue.js";
 import type { Priority } from "../services/render.js";
 
@@ -17,6 +18,7 @@ const notifySchema = z.object({
   sound: z.union([z.boolean(), z.string()]).optional(),
   lifetime: z.number().int().positive().optional(),
   cycles: z.number().int().positive().optional(),
+  device: z.string().min(1).max(64).optional(),
 });
 
 const frameSchema = z.object({
@@ -52,14 +54,24 @@ async function requireApiKey(
 }
 
 export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/health", async () => ({
-    ok: true,
-    service: "lametric-bridge",
-    queue: queueSize(),
-    ts: new Date().toISOString(),
-  }));
+  app.get("/api/v1/health", async () => {
+    const devices = await listDevices();
+    return {
+      ok: true,
+      service: "lametric-bridge",
+      queue: queueSize(),
+      devices: devices.map(publicDevice),
+      ts: new Date().toISOString(),
+    };
+  });
 
   app.get("/lametric/frames", async () => getIndicatorFrames());
+
+  app.get("/api/v1/devices", async (request, reply) => {
+    const caller = await requireApiKey(request, reply);
+    if (!caller) return;
+    return { devices: (await listDevices()).map(publicDevice) };
+  });
 
   app.post("/api/v1/notify", async (request, reply) => {
     const caller = await requireApiKey(request, reply);
@@ -80,6 +92,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       cycles: body.cycles,
       source: `app:${caller.name}`,
       appId: caller.id,
+      deviceId: body.device,
     });
 
     return reply.code(202).send({ accepted: true, queue: queueSize() });

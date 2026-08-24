@@ -36,6 +36,13 @@ Fields:
 | `sound` | boolean \| string | optional sound id |
 | `lifetime` | number | ms |
 | `cycles` | number | display cycles |
+| `device` | string | clock id or slug (`lametric`, `ulanzi`). Omit to send to every clock. |
+
+List clocks (id, slug, kind, host):
+
+```bash
+curl "$BRIDGE/api/v1/devices" -H "X-API-Key: $API_KEY"
+```
 
 ## Update a persistent frame
 
@@ -80,8 +87,9 @@ No API key required (LAN only). Response shape:
 1. Create a long-lived access token in HA.
 2. In the panel, set HA URL + token.
 3. Add entities:
-   - `notify` — enqueue a LaMetric notification on state change
-   - `frame` — update a channel frame continuously
+   - `notify` — enqueue a notification on state change
+   - `frame` — persistent display: LaMetric channel frame, or AWTRIX pushed app
+   - `device` — target clock (or all clocks)
 4. Templates support `{{ state }}`, `{{ name }}`, `{{ unit }}`, `{{ entity_id }}`.
    Filters: `{{ state | round:2 }}`, `{{ state | fixed:2 }}`, `{{ state | int }}`.
    Edit templates anytime in the panel (Home Assistant → entity card → Guardar texto).
@@ -89,7 +97,7 @@ No API key required (LAN only). Response shape:
    - `interval_sec` — for `notify`, owns the cadence (no per-change enqueue; min 10s). Frames still update on change.
    - `min_delta` — only emit on change when `|new - last| >= delta` (numeric)
    - `when_gt` / `when_lt` — emit when numeric state is `> X` and/or `< Y` (edge into zone; re-alert while inside only if `min_delta` is set)
-   - `priority` / `sound` — used when notifying the LaMetric
+   - `priority` / `sound` — used when notifying a clock
 
 ## Health
 

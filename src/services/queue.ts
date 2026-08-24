@@ -1,5 +1,5 @@
 import { query, type NotifyLogRow } from "../db/index.js";
-import { sendNotification } from "../adapters/lametric.js";
+import { dispatchNotification } from "../adapters/clocks.js";
 import { config } from "../config.js";
 import { priorityRank, type Message } from "./render.js";
 
@@ -84,6 +84,7 @@ function serializeItem(item: QueueItem, position: number) {
     icon: item.message.icon,
     priority: item.message.priority ?? "info",
     source: item.message.source,
+    deviceId: item.message.deviceId,
     enqueuedAt: item.enqueuedAt,
     position,
     attempts: item.attempts,
@@ -95,6 +96,7 @@ export function listQueue(): Array<{
   icon?: string;
   priority: string;
   source: string;
+  deviceId?: string;
   enqueuedAt: number;
   position: number;
   attempts: number;
@@ -108,6 +110,7 @@ export function getCurrentQueueItem(): {
   icon?: string;
   priority: string;
   source: string;
+  deviceId?: string;
   enqueuedAt: number;
   position: number;
   attempts: number;
@@ -135,7 +138,7 @@ function displayPauseMs(message: Message, ok: boolean): number {
 
 /** Errors that will not succeed on retry (DND, auth, bad config). */
 function isPermanentFailure(detail: string): boolean {
-  return /only notifications with priority|authorization is required|not configured|modo silencioso/i.test(
+  return /only notifications with priority|authorization is required|not configured|modo silencioso|unknown device|no clocks configured/i.test(
     detail,
   );
 }
@@ -151,7 +154,7 @@ async function processOne(): Promise<number> {
     let ok = false;
     let detail = "";
     try {
-      const result = await sendNotification(item.message);
+      const result = await dispatchNotification(item.message);
       ok = result.ok;
       detail = result.detail;
       await logNotify(

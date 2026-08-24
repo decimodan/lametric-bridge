@@ -2,6 +2,14 @@
 
 # Decisions made
 
+## 2026-08-24 — Dual clocks (LaMetric + Ulanzi)
+
+- Keep both devices: LaMetric Time (local API) and Ulanzi TC001 (AWTRIX NG).
+- Identify clocks by unique `slug` (`lametric`, `ulanzi`) in the panel, HA mappings, and `POST /api/v1/notify` `device` field.
+- Env upserts on boot: `LAMETRIC_*` → slug `lametric`; `AWTRIX_BASE_URL` (default `http://192.168.50.98`) → slug `ulanzi`. Docker cannot resolve `*.local` mDNS.
+- HA entity mappings can target one clock or all; the same sensor may be mapped more than once.
+- Brightness is 0–100% in the panel (LaMetric native; AWTRIX scaled 0–255).
+
 ## 2026-08-07 — PRODUCT-00002 architecture
 
 - Single Node/TypeScript Fastify service for ingest, panel, and adapters.

@@ -6,7 +6,10 @@ services:
     environment:
       PORT: "3000"
       DATABASE_URL: ${DATABASE_URL}
-      PANEL_USER: admin
-      PANEL_PASSWORD: changeme
-      CONFIG_SECRET: local-dev-secret-change-me
+      PANEL_USER: ${PANEL_USER:-admin}
+      PANEL_PASSWORD: ${PANEL_PASSWORD:-changeme}
+      CONFIG_SECRET: ${CONFIG_SECRET:-local-dev-secret-change-me}
+      LAMETRIC_DEVICE_IP: ${LAMETRIC_DEVICE_IP:-}
+      LAMETRIC_API_KEY: ${LAMETRIC_API_KEY:-}
+      AWTRIX_BASE_URL: ${AWTRIX_BASE_URL:-http://192.168.50.98}
     restart: unless-stopped

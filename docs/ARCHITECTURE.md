@@ -2,11 +2,12 @@
 
 ## Role
 
-`lametric-bridge` is a LAN service that sits between local applications / Home Assistant and a single LaMetric Time device.
+`lametric-bridge` is a LAN service that sits between local applications / Home Assistant and one or more pixel clocks (LaMetric Time and AWTRIX / Ulanzi TC001).
 
 - Apps push notifications and persistent frames via REST + API key.
-- Home Assistant state changes map to notifications or frames.
-- The bridge pushes notifications to the LaMetric local API and exposes `/lametric/frames` for an Indicator App.
+- Home Assistant state changes map to notifications or frames, targeted at a specific clock or all clocks.
+- The bridge pushes notifications to each clock's local API and exposes `/lametric/frames` for a LaMetric Indicator App.
+- Each clock has a unique `slug` (`lametric`, `ulanzi`, …) used in the panel, HA mappings, and `POST /api/v1/notify`.
 
 ## Stack
 
@@ -31,16 +32,16 @@ src/
 ## Data flow
 
 1. Ingest (`POST /api/v1/notify` or HA WebSocket event)
-2. Normalize to `Message`
+2. Normalize to `Message` (optional `deviceId` / slug)
 3. Priority queue with rate limiting
-4. LaMetric local notification API (`https://device:4343`)
+4. Dispatch to LaMetric (`https://device:4343`) and/or AWTRIX (`http://device/api/v1/notifications`)
 
-Persistent channels write into `frames` and are served from `GET /lametric/frames`.
+Persistent LaMetric channels write into `frames` and are served from `GET /lametric/frames`. HA `frame` mappings on an AWTRIX clock become a pushed app (`PUT /api/v1/apps/pushed/...`).
 
 ## Security
 
 - App API keys stored as SHA-256 hashes; plaintext shown once at creation.
-- HA token and LaMetric API key encrypted at rest with `CONFIG_SECRET`.
+- HA token and device API keys encrypted at rest with `CONFIG_SECRET`.
 - Panel protected with HTTP basic auth.
 - Intended for private LAN / Dokploy internal network only.
 
@@ -56,9 +57,9 @@ Required environment variables:
 - `CONFIG_SECRET`
 - `PORT` (default `3000`)
 
-Optional (preferred in prod): when both are set, LaMetric device config comes from env and the panel form is read-only:
+Optional clocks from env (upserted on boot; host/key are read-only in the panel):
 
-- `LAMETRIC_DEVICE_IP`
-- `LAMETRIC_API_KEY`
+- `LAMETRIC_DEVICE_IP` + `LAMETRIC_API_KEY` → slug `lametric`
+- `AWTRIX_BASE_URL` (default `http://192.168.50.98`; optional `AWTRIX_USER` / `AWTRIX_PASS`) → slug `ulanzi`
 
 Healthcheck: `GET /api/v1/health`

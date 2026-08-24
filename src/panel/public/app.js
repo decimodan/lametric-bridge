@@ -26,6 +26,9 @@ $$("#tabs button").forEach((btn) => {
     $$(".panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
+    if (btn.dataset.tab === "device") {
+      loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
+    }
     if (btn.dataset.tab === "queue") {
       loadQueueTab().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
       startQueuePolling();
@@ -40,61 +43,172 @@ $$("#tabs button").forEach((btn) => {
 
 async function refreshStatus() {
   const s = await api("/panel/api/status");
-  const device = s.device.configured ? `LM ${s.device.host}` : "LM no configurado";
+  const clocks = (s.devices || [])
+    .map((d) => `${d.name} (${d.slug})`)
+    .join(", ") || "sin relojes";
   const ha = s.ha.configured
     ? `HA ${s.ha.connected ? "conectado" : "idle"}`
     : "HA no configurado";
-  $("#statusLine").textContent = `${device} · ${ha} · cola ${s.queue} · ${s.apps} apps · ${s.channels} canales`;
+  $("#statusLine").textContent = `${clocks} · ${ha} · cola ${s.queue} · ${s.apps} apps · ${s.channels} canales`;
 }
 
-/* Device */
-async function loadDevice() {
-  const d = await api("/panel/api/device");
-  const form = $("#deviceForm");
-  if (d.configured) {
-    form.host.value = d.host || "";
+let cachedDevices = [];
+
+function deviceOptions(selected = "", includeAll = true) {
+  const all = includeAll ? `<option value="" ${selected === "" ? "selected" : ""}>Todos</option>` : "";
+  return all + cachedDevices.map((d) =>
+    `<option value="${escapeHtml(d.id)}" ${selected === d.id || selected === d.slug ? "selected" : ""}>${escapeHtml(d.name)} (${escapeHtml(d.slug)})</option>`
+  ).join("");
+}
+
+function fillDeviceSelects() {
+  $$("#notifyDevice, #haDeviceSelect").forEach((sel) => {
+    const current = sel.value;
+    sel.innerHTML = deviceOptions(current, true);
+  });
+}
+
+async function loadDevices() {
+  const { devices } = await api("/panel/api/devices");
+  cachedDevices = devices || [];
+  fillDeviceSelects();
+  const list = $("#deviceList");
+  list.innerHTML = "";
+  if (!cachedDevices.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `<div class="meta">No hay relojes. Agregá uno o definí LAMETRIC_* / AWTRIX_BASE_URL.</div>`;
+    list.appendChild(li);
+    return;
   }
-  const fromEnv = d.source === "env";
-  form.host.readOnly = fromEnv;
-  form.apiKey.readOnly = fromEnv;
-  form.apiKey.required = !fromEnv;
-  form.apiKey.placeholder = fromEnv ? "(desde variables de entorno)" : "device API key";
-  $("#deviceSave").hidden = fromEnv;
-  $("#deviceHint").textContent = fromEnv
-    ? "Configurado vía LAMETRIC_DEVICE_IP / LAMETRIC_API_KEY (solo lectura en el panel)."
-    : "IP o host del reloj en la LAN y API key de developer (local).";
+
+  for (const d of cachedDevices) {
+    const li = document.createElement("li");
+    const kindLabel = d.kind === "awtrix" ? "Ulanzi / AWTRIX" : "LaMetric";
+    const env = d.envManaged ? `<span class="badge">env</span>` : "";
+    li.innerHTML = `
+      <div class="device-card-top">
+        <div>
+          <strong>${escapeHtml(d.name)}</strong> ${env}
+          <div class="meta">${escapeHtml(kindLabel)} · slug <code>${escapeHtml(d.slug)}</code> · ${escapeHtml(d.host)}</div>
+        </div>
+        <div class="device-actions">
+          <button type="button" class="secondary" data-test="${d.id}">Probar</button>
+          <button type="button" data-identify="${d.id}">Identificar</button>
+          ${d.envManaged ? "" : `<button type="button" class="danger" data-del-dev="${d.id}">Borrar</button>`}
+        </div>
+      </div>
+      <form class="brightness" data-bright="${d.id}">
+        <label>Brillo <span data-bright-val="${d.id}">—</span>%
+          <input type="range" min="0" max="100" value="50" data-bright-range="${d.id}" />
+        </label>
+        <label class="check">
+          <input type="checkbox" data-bright-auto="${d.id}" />
+          Automático
+        </label>
+        <button type="submit">Aplicar brillo</button>
+      </form>`;
+    list.appendChild(li);
+    loadDeviceStatus(d.id).catch(() => {});
+  }
+
+  list.querySelectorAll("[data-test]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/devices/${btn.dataset.test}/test`, { method: "POST", body: "{}" });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-identify]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/devices/${btn.dataset.identify}/identify`, { method: "POST", body: "{}" });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-del-dev]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/panel/api/devices/${btn.dataset.delDev}`, { method: "DELETE" });
+        setMsg($("#deviceMsg"), "Eliminado", "ok");
+        await loadDevices();
+        refreshStatus();
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("form.brightness").forEach((form) => {
+    const id = form.dataset.bright;
+    const range = form.querySelector(`[data-bright-range="${id}"]`);
+    const label = form.querySelector(`[data-bright-val="${id}"]`);
+    range.addEventListener("input", () => {
+      label.textContent = range.value;
+    });
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api(`/panel/api/devices/${id}/brightness`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            brightness: Number(range.value),
+            autoBrightness: form.querySelector(`[data-bright-auto="${id}"]`).checked,
+          }),
+        });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
 }
 
+async function loadDeviceStatus(id) {
+  const r = await api(`/panel/api/devices/${id}/status`);
+  if (!r.ok) return;
+  const range = document.querySelector(`[data-bright-range="${id}"]`);
+  const label = document.querySelector(`[data-bright-val="${id}"]`);
+  const auto = document.querySelector(`[data-bright-auto="${id}"]`);
+  if (typeof r.brightness === "number" && range) {
+    range.value = String(r.brightness);
+    if (label) label.textContent = String(r.brightness);
+  }
+  if (auto) auto.checked = Boolean(r.autoBrightness);
+}
 
 $("#deviceForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   try {
-    await api("/panel/api/device", {
-      method: "PUT",
+    await api("/panel/api/devices", {
+      method: "POST",
       body: JSON.stringify({
+        name: fd.get("name"),
+        slug: String(fd.get("slug") || "").trim().toLowerCase(),
+        kind: fd.get("kind"),
         host: fd.get("host"),
-        apiKey: fd.get("apiKey"),
+        apiKey: fd.get("apiKey") || undefined,
       }),
     });
-    setMsg($("#deviceMsg"), "Guardado", "ok");
+    e.target.reset();
+    setMsg($("#deviceMsg"), "Reloj agregado", "ok");
+    await loadDevices();
     refreshStatus();
   } catch (err) {
     setMsg($("#deviceMsg"), err.message, "error");
   }
 });
 
-$("#deviceTest").addEventListener("click", async () => {
-  try {
-    const r = await api("/panel/api/device/test", { method: "POST", body: "{}" });
-    setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
-  } catch (err) {
-    setMsg($("#deviceMsg"), err.message, "error");
-  }
-});
-
-async function sendToLametric(payload) {
-  const r = await api("/panel/api/device/notify", {
+async function sendNotify(payload) {
+  const r = await api("/panel/api/notify", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -106,11 +220,12 @@ $("#notifyForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   try {
-    await sendToLametric({
+    await sendNotify({
       text: String(fd.get("text") || "").trim(),
       icon: String(fd.get("icon") || "").trim() || undefined,
       priority: fd.get("priority") || "info",
       sound: fd.get("sound") === "on",
+      device: fd.get("device") || undefined,
     });
   } catch (err) {
     setMsg($("#notifyMsg"), err.message, "error");
@@ -119,10 +234,11 @@ $("#notifyForm").addEventListener("submit", async (e) => {
 
 $("#notifyTest").addEventListener("click", async () => {
   try {
-    await sendToLametric({
+    await sendNotify({
       text: "Prueba lametric-bridge",
       priority: "info",
       sound: true,
+      device: $("#notifyDevice").value || undefined,
     });
   } catch (err) {
     setMsg($("#notifyMsg"), err.message, "error");
@@ -163,7 +279,7 @@ async function loadQueueEntities() {
     li.innerHTML = `
       <div style="flex:1">
         <strong>${escapeHtml(name)}</strong>
-        <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)}</div>
+        <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)} · ${escapeHtml(ent.device_name || "todos")}</div>
         <div style="margin-top:0.35rem">${escapeHtml(preview)}</div>
       </div>
       <div class="entity-send">
@@ -204,7 +320,7 @@ async function loadQueueBoard() {
   $("#queueSizeLabel").textContent = `(${data.size})`;
   const cur = data.current;
   $("#queueCurrentLabel").textContent = cur
-    ? `Enviando: [${cur.priority}] ${cur.text}`
+    ? `Enviando: [${cur.priority}] ${cur.text}${cur.deviceId ? ` → ${cur.deviceId}` : ""}`
     : "Enviando: —";
 
   for (const p of ["critical", "warning", "info"]) {
@@ -215,7 +331,7 @@ async function loadQueueBoard() {
       const li = document.createElement("li");
       li.innerHTML = `
         <strong>#${item.position} ${escapeHtml(item.text)}</strong>
-        <div class="meta">${escapeHtml(item.source)} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
+        <div class="meta">${escapeHtml(item.source)}${item.deviceId ? ` · ${escapeHtml(item.deviceId)}` : ""} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
       lane.appendChild(li);
     }
   }
@@ -512,6 +628,7 @@ $("#channelForm").addEventListener("submit", async (e) => {
 
 /* HA */
 async function loadHa() {
+  fillDeviceSelects();
   const data = await api("/panel/api/ha");
   if (data.baseUrl) $("#haForm").baseUrl.value = data.baseUrl;
 
@@ -535,7 +652,7 @@ async function loadHa() {
       <div class="row" style="justify-content:space-between;width:100%;margin:0">
         <div>
           <strong>${escapeHtml(preview?.friendly_name || ent.entity_id)}</strong>
-          <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)}</div>
+          <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)} · ${escapeHtml(preview.device_name || ent.device_name || "todos")}</div>
         </div>
         <button type="button" class="danger" data-del-ent="${ent.id}">Borrar</button>
       </div>
@@ -573,6 +690,9 @@ async function loadHa() {
           </label>
           <label>Si &lt;
             <input name="when_lt" type="number" step="0.1" placeholder="off" value="${preview.when_lt ?? ent.when_lt ?? ""}" />
+          </label>
+          <label>Reloj
+            <select name="device_id">${deviceOptions(ent.device_id || "", true)}</select>
           </label>
           <label class="check">
             <input name="sound" type="checkbox" ${(preview.sound ?? ent.sound) ? "checked" : ""} />
@@ -623,6 +743,7 @@ async function loadHa() {
             when_lt: fd.get("when_lt") !== "" && fd.get("when_lt") != null
               ? Number(fd.get("when_lt"))
               : null,
+            device_id: fd.get("device_id") || null,
           }),
         });
         setMsg($("#haMsg"), "Entidad actualizada", "ok");
@@ -710,6 +831,7 @@ $("#haEntityForm").addEventListener("submit", async (e) => {
         fd.get("when_lt") !== "" && fd.get("when_lt") != null
           ? Number(fd.get("when_lt"))
           : null,
+      device_id: fd.get("device_id") || null,
     }),
   });
   e.target.reset();
@@ -744,7 +866,7 @@ function escapeHtml(s) {
 
 (async function init() {
   await refreshStatus();
-  await loadDevice();
+  await loadDevices();
   await loadApps();
   await loadChannels();
   await loadHa();

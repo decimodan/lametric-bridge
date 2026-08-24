@@ -8,10 +8,12 @@ import {
 } from "./adapters/homeAssistant.js";
 import { config } from "./config.js";
 import { closeDb, dbDisplay, initDb } from "./db/index.js";
+import { syncEnvDevices } from "./services/devices.js";
 import { startQueue } from "./services/queue.js";
 
 async function main(): Promise<void> {
   await initDb();
+  await syncEnvDevices();
   startQueue();
   startHomeAssistant();
 
