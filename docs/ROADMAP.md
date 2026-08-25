@@ -10,9 +10,9 @@
 - PRODUCT-00003: Dual clocks — named LaMetric + Ulanzi (AWTRIX), HA sensor targeting, brightness from the panel
 - PRODUCT-00002: Panel UI modular widget/card style deployed to `lametric.lan`
 - PRODUCT-00002: Panel color scheme → dark + neon purple accents
+- PRODUCT-00004: App webhook (`POST /api/v1/webhook`) for Sentinel / LAN apps — deployed to `lametric.lan`
 
 ## Next
 
-- PRODUCT-00004: App webhook (`POST /api/v1/webhook`) for Sentinel and other LAN apps
 - Richer HA automation rules (templates / conditions beyond current thresholds)
 - Rotate panel password from default
