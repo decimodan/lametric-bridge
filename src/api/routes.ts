@@ -21,6 +21,23 @@ const notifySchema = z.object({
   device: z.string().min(1).max(64).optional(),
 });
 
+/** Event-oriented ingest for apps (Sentinel, etc.). Same queue as /notify. */
+const webhookSchema = z.object({
+  event: z.string().min(1).max(64).optional(),
+  text: z.string().min(1).max(256).optional(),
+  message: z.string().min(1).max(256).optional(),
+  icon: z.string().max(64).optional(),
+  priority: z.enum(["info", "warning", "critical"]).optional(),
+  sound: z.union([z.boolean(), z.string()]).optional(),
+  lifetime: z.number().int().positive().optional(),
+  cycles: z.number().int().positive().optional(),
+  device: z.string().min(1).max(64).optional(),
+  /** Optional: also upsert a persistent Indicator frame. */
+  channel: z.string().min(1).max(64).optional(),
+  frame_text: z.string().min(1).max(256).optional(),
+  frame_icon: z.string().max(64).optional(),
+});
+
 const frameSchema = z.object({
   channel_id: z.string().uuid().optional(),
   channel: z.string().min(1).max(64).optional(),
@@ -96,6 +113,67 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     });
 
     return reply.code(202).send({ accepted: true, queue: queueSize() });
+  });
+
+  /**
+   * Webhook for LAN apps (Sentinel, scripts, etc.).
+   * Accepts event metadata + text/message; enqueues a clock notification.
+   * Optionally upserts a persistent frame when `channel` is set.
+   */
+  app.post("/api/v1/webhook", async (request, reply) => {
+    const caller = await requireApiKey(request, reply);
+    if (!caller) return;
+
+    const parsed = webhookSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+
+    const body = parsed.data;
+    const text = (body.text ?? body.message ?? "").trim();
+    if (!text) {
+      return reply
+        .code(400)
+        .send({ error: "Provide text or message (1–256 chars)" });
+    }
+
+    const event = body.event?.trim();
+    const source = event
+      ? `app:${caller.name}:${event}`
+      : `app:${caller.name}`;
+
+    enqueue({
+      text,
+      icon: body.icon,
+      priority: (body.priority ?? "info") as Priority,
+      sound: body.sound,
+      lifetime: body.lifetime,
+      cycles: body.cycles,
+      source,
+      appId: caller.id,
+      deviceId: body.device,
+    });
+
+    let frame = null;
+    if (body.channel) {
+      const existing = (await listChannels()).find(
+        (c) => c.name.toLowerCase() === body.channel!.toLowerCase(),
+      );
+      const channelId =
+        existing?.id ?? (await createChannel(body.channel)).id;
+      frame = await upsertFrame(
+        channelId,
+        body.frame_text ?? text,
+        body.frame_icon ?? body.icon ?? "a2867",
+      );
+    }
+
+    return reply.code(202).send({
+      accepted: true,
+      queue: queueSize(),
+      event: event ?? null,
+      frame,
+    });
   });
 
   app.post("/api/v1/frames", async (request, reply) => {

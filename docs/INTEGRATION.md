@@ -38,6 +38,45 @@ Fields:
 | `cycles` | number | display cycles |
 | `device` | string | clock id or slug (`lametric`, `ulanzi`). Omit to send to every clock. |
 
+## App webhook (Sentinel / scripts)
+
+Event-oriented ingest for LAN apps. Same queue as `/notify`, with optional `event` label in the log source (`app:<name>:<event>`) and optional persistent frame update.
+
+```bash
+curl -X POST "$BRIDGE/api/v1/webhook" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{
+    "event": "torrent.completed",
+    "text": "DONE Show.S01 · hot 42G libre",
+    "priority": "info",
+    "icon": "a2867",
+    "sound": true
+  }'
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `event` | string | optional label (e.g. `torrent.added`, `torrent.completed`, `torrent.removed`, `copy.done`) |
+| `text` or `message` | string | required, max 256 |
+| `icon` / `priority` / `sound` / `lifetime` / `cycles` / `device` | — | same as `/notify` |
+| `channel` | string | optional: also upsert Indicator frame on this channel |
+| `frame_text` / `frame_icon` | string | frame content (defaults to `text` / `icon`) |
+
+### Sentinel
+
+1. Create an app named `sentinel` in the bridge panel; copy the API key once.
+2. In Sentinel Dokploy `.env`:
+
+```env
+LAMETRIC_BRIDGE_URL=http://lametric.lan
+LAMETRIC_BRIDGE_API_KEY=lb_...
+# optional: LAMETRIC_BRIDGE_DEVICE=lametric
+# optional: LAMETRIC_HOT_WARN_GIB=50
+```
+
+Sentinel posts webhook events for torrent added / download complete / removed / copy done, appending hot free space when available.
+
 List clocks (id, slug, kind, host):
 
 ```bash

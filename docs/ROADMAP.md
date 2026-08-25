@@ -13,5 +13,6 @@
 
 ## Next
 
+- PRODUCT-00004: App webhook (`POST /api/v1/webhook`) for Sentinel and other LAN apps
 - Richer HA automation rules (templates / conditions beyond current thresholds)
 - Rotate panel password from default
