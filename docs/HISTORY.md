@@ -2,6 +2,12 @@
 
 # Decisions made
 
+## 2026-08-25 — App webhook for Sentinel
+
+- Added `POST /api/v1/webhook` (API key) as an event-oriented ingest alongside `/notify`.
+- Optional `event` tags the notify log source as `app:<name>:<event>`; optional `channel` upserts a frame in the same request.
+- Sentinel owns Proxmox/hot-disk domain logic and pushes text to the bridge; the bridge stays display-only.
+
 ## 2026-08-24 — Panel UI: neon purple dark theme
 
 - Kept modular card/widget layout; switched palette to black canvas + neon violet (`#A855F7`) accents with soft glow on active controls.
