@@ -14,9 +14,9 @@
 - PRODUCT-00005: Alert cards — presets + custom cards in panel, send to any clock slug; `card` field on `/notify` and `/webhook` — deployed to `lametric.lan`
 - PRODUCT-00006: Card automations (IFTTT) — HA sensor → card → clock from Alertas tab — deployed to `lametric.lan`
 - PRODUCT-00007: Conexiones (Sentinel events) as IFTTT source — nueva tarea / descarga / copia → card + reloj — deployed to `lametric.lan`
+- PRODUCT-00009: Frigate detections as Conexiones + configurable alert sounds (on/off + LaMetric sound id) — deployed to `lametric.lan`
 
 ## Next
 
-- PRODUCT-00009: Frigate detections as Conexiones source (`POST /api/v1/frigate` → person/car/… → card) + alert audio (on/off + sound id)
 - Richer HA automation rules (templates / conditions beyond current thresholds)
 - Rotate panel password from default
