@@ -5,6 +5,7 @@ import { decryptSecret, encryptSecret } from "../db/crypto.js";
 import { pushAwtrixApp } from "./awtrix.js";
 import { getCard } from "../services/cards.js";
 import {
+  haTemplateVars,
   listEnabledAutomationsForEntity,
   listWatchedAutomationEntityIds,
   markAutomationSent,
@@ -391,7 +392,10 @@ async function handleCardAutomations(
     const card = await getCard(auto.cardId);
     if (!card) continue;
 
-    const text = renderCardText(card, state, attributes, entityId);
+    const text = renderCardText(
+      card,
+      haTemplateVars(state, attributes, entityId),
+    );
     if (!text) {
       await touchAutomationValue(auto.id, state);
       continue;

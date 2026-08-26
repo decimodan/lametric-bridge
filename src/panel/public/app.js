@@ -380,26 +380,93 @@ function triggerLabel(trigger, value) {
   return "cambia";
 }
 
+function ruleIfLabel(a) {
+  if (a.source === "connection") {
+    return `SI ${a.appName || "app"} → ${a.eventName || "event"}`;
+  }
+  return `SI ${a.entityId || "?"} ${triggerLabel(a.trigger, a.triggerValue)}`;
+}
+
+let connectionCatalog = [];
+
+async function loadConnectionCatalog() {
+  try {
+    const { connections } = await api("/panel/api/connections");
+    connectionCatalog = connections || [];
+  } catch {
+    connectionCatalog = [
+      {
+        id: "sentinel",
+        name: "Sentinel",
+        events: [
+          { id: "torrent.added", label: "Nueva tarea" },
+          { id: "torrent.completed", label: "Descarga terminada" },
+          { id: "torrent.removed", label: "Tarea eliminada" },
+          { id: "copy.done", label: "Copia terminada" },
+        ],
+      },
+    ];
+  }
+  fillConnectionSelects();
+}
+
+function fillConnectionSelects() {
+  const appSel = $("#autoAppSelect");
+  const eventSel = $("#autoEventSelect");
+  if (!appSel || !eventSel) return;
+  const appCurrent = appSel.value;
+  const eventCurrent = eventSel.value;
+  appSel.innerHTML = connectionCatalog
+    .map(
+      (c) =>
+        `<option value="${escapeHtml(c.id)}" ${appCurrent === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`,
+    )
+    .join("");
+  const app = connectionCatalog.find((c) => c.id === appSel.value) || connectionCatalog[0];
+  eventSel.innerHTML = (app?.events || [])
+    .map(
+      (e) =>
+        `<option value="${escapeHtml(e.id)}" ${eventCurrent === e.id ? "selected" : ""}>${escapeHtml(e.label)} (${escapeHtml(e.id)})</option>`,
+    )
+    .join("");
+}
+
+function syncAutoSourceUI() {
+  const source = $("#autoSource")?.value || "connection";
+  const ha = $("#autoHaFields");
+  const conn = $("#autoConnFields");
+  if (ha) ha.hidden = source !== "ha";
+  if (conn) conn.hidden = source !== "connection";
+  if (source === "ha") syncAutoValueVisibility();
+}
+
 async function loadAutomations() {
   fillDeviceSelects();
   fillCardSelect();
+  fillConnectionSelects();
+  syncAutoSourceUI();
   const { automations } = await api("/panel/api/automations");
   const list = $("#autoList");
   list.innerHTML = "";
   if (!automations.length) {
     const li = document.createElement("li");
-    li.innerHTML = `<div class="meta">Sin reglas. Armá una arriba: SI sensor → ENTONCES card en reloj.</div>`;
+    li.innerHTML = `<div class="meta">Sin reglas. Armá una arriba: SI Conexiones/HA → ENTONCES card en reloj.</div>`;
     list.appendChild(li);
     return;
   }
   for (const a of automations) {
     const li = document.createElement("li");
+    const badge =
+      a.source === "connection"
+        ? `<span class="badge badge-preset">conexión</span>`
+        : `<span class="badge">HA</span>`;
     li.innerHTML = `
       <div class="auto-rule">
         <div>
           <strong>${escapeHtml(a.name || a.cardName || "regla")}</strong>
+          ${badge}
           ${a.enabled ? "" : `<span class="badge">pausada</span>`}
-          <div class="rule-if">SI ${escapeHtml(a.entityId)} ${escapeHtml(triggerLabel(a.trigger, a.triggerValue))}</div>
+          <div class="rule-if">${escapeHtml(ruleIfLabel(a))}</div>
           <div class="rule-then">ENTONCES <code>${escapeHtml(a.cardSlug || a.cardId)}</code>
             → ${escapeHtml(a.deviceName || a.deviceSlug || "todos")}
           </div>
@@ -465,6 +532,8 @@ function syncAutoValueVisibility() {
 }
 
 $("#autoTrigger").addEventListener("change", syncAutoValueVisibility);
+$("#autoSource").addEventListener("change", syncAutoSourceUI);
+$("#autoAppSelect").addEventListener("change", () => fillConnectionSelects());
 
 $("#autoSearchBtn").addEventListener("click", async () => {
   try {
@@ -491,22 +560,32 @@ $("#autoSearchBtn").addEventListener("click", async () => {
 $("#autoForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
+  const source = String(fd.get("source") || "connection");
   const trigger = String(fd.get("trigger") || "change");
+  const payload = {
+    source,
+    cardId: fd.get("cardId"),
+    deviceId: fd.get("deviceId") || null,
+  };
+  if (source === "ha") {
+    payload.entityId = String(fd.get("entityId") || "").trim();
+    payload.trigger = trigger;
+    payload.triggerValue = trigger === "change" ? null : String(fd.get("triggerValue") || "").trim();
+  } else {
+    payload.appName = String(fd.get("appName") || "sentinel").trim();
+    payload.eventName = String(fd.get("eventName") || "").trim();
+  }
   try {
     await api("/panel/api/automations", {
       method: "POST",
-      body: JSON.stringify({
-        cardId: fd.get("cardId"),
-        entityId: String(fd.get("entityId") || "").trim(),
-        deviceId: fd.get("deviceId") || null,
-        trigger,
-        triggerValue: trigger === "change" ? null : String(fd.get("triggerValue") || "").trim(),
-      }),
+      body: JSON.stringify(payload),
     });
     e.target.reset();
-    syncAutoValueVisibility();
+    $("#autoSource").value = "connection";
+    syncAutoSourceUI();
     fillCardSelect();
     fillDeviceSelects();
+    fillConnectionSelects();
     setMsg($("#autoMsg"), "Regla creada", "ok");
     await loadAutomations();
   } catch (err) {
@@ -1181,9 +1260,10 @@ function escapeHtml(s) {
 (async function init() {
   await refreshStatus();
   await loadDevices();
+  await loadConnectionCatalog();
   await loadCards();
   await loadAutomations();
-  syncAutoValueVisibility();
+  syncAutoSourceUI();
   await loadApps();
   await loadChannels();
   await loadHa();

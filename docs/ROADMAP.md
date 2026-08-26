@@ -13,6 +13,7 @@
 - PRODUCT-00004: App webhook (`POST /api/v1/webhook`) for Sentinel / LAN apps — deployed to `lametric.lan`
 - PRODUCT-00005: Alert cards — presets + custom cards in panel, send to any clock slug; `card` field on `/notify` and `/webhook` — deployed to `lametric.lan`
 - PRODUCT-00006: Card automations (IFTTT) — HA sensor → card → clock from Alertas tab — deployed to `lametric.lan`
+- PRODUCT-00007: Conexiones (Sentinel events) as IFTTT source — nueva tarea / descarga / copia → card + reloj
 
 ## Next
 

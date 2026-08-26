@@ -3,6 +3,12 @@ import { z } from "zod";
 import { findAppByApiKey } from "../services/apps.js";
 import { getCard, listCards, publicCard } from "../services/cards.js";
 import {
+  connectionTemplateVars,
+  listEnabledConnectionAutomations,
+  markAutomationSent,
+  renderCardText,
+} from "../services/cardAutomations.js";
+import {
   createChannel,
   getIndicatorFrames,
   listChannels,
@@ -40,6 +46,10 @@ const webhookSchema = z.object({
   lifetime: z.number().int().positive().optional(),
   cycles: z.number().int().positive().optional(),
   device: z.string().min(1).max(64).optional(),
+  /** Optional structured vars for connection automations / card templates. */
+  name: z.string().max(256).optional(),
+  hot_free: z.string().max(32).optional(),
+  vars: z.record(z.string(), z.string()).optional(),
   /** Optional: also upsert a persistent Indicator frame. */
   channel: z.string().min(1).max(64).optional(),
   frame_text: z.string().min(1).max(256).optional(),
@@ -182,32 +192,77 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       sound = sound ?? card.sound;
     }
 
-    if (!text) {
-      return reply
-        .code(400)
-        .send({ error: "Provide text, message, or card (1–256 chars)" });
+    const event = body.event?.trim();
+    let automationHits = 0;
+
+    if (event) {
+      const autos = await listEnabledConnectionAutomations(caller.name, event);
+      if (autos.length) {
+        const vars = {
+          ...connectionTemplateVars({
+            event,
+            app: caller.name,
+            text: text || event,
+            hotFree: body.hot_free,
+            name: body.name,
+          }),
+          ...(body.vars ?? {}),
+        };
+        for (const auto of autos) {
+          const card = await getCard(auto.cardId);
+          if (!card) continue;
+          const rendered = renderCardText(card, vars);
+          if (!rendered) continue;
+          enqueue({
+            text: rendered,
+            icon: card.icon,
+            priority: card.priority,
+            sound: card.sound,
+            lifetime: body.lifetime,
+            cycles: body.cycles,
+            source: `card-auto:${caller.name}:${event}:${card.slug}`,
+            appId: caller.id,
+            deviceId: auto.deviceId ?? body.device,
+          });
+          await markAutomationSent(auto.id, event);
+          automationHits += 1;
+        }
+      }
     }
 
-    const event = body.event?.trim();
-    const source = [
-      `app:${caller.name}`,
-      event,
-      body.card ? `card:${body.card}` : null,
-    ]
-      .filter(Boolean)
-      .join(":");
+    // If connection automations handled this event, skip default notify
+    // (avoids double messages). Still allow explicit card/text without event rules.
+    const skipDefault = automationHits > 0;
 
-    enqueue({
-      text,
-      icon,
-      priority: (priority ?? "info") as Priority,
-      sound,
-      lifetime: body.lifetime,
-      cycles: body.cycles,
-      source,
-      appId: caller.id,
-      deviceId: body.device,
-    });
+    if (!skipDefault) {
+      if (!text) {
+        return reply
+          .code(400)
+          .send({ error: "Provide text, message, or card (1–256 chars)" });
+      }
+
+      const source = [
+        `app:${caller.name}`,
+        event,
+        body.card ? `card:${body.card}` : null,
+      ]
+        .filter(Boolean)
+        .join(":");
+
+      enqueue({
+        text,
+        icon,
+        priority: (priority ?? "info") as Priority,
+        sound,
+        lifetime: body.lifetime,
+        cycles: body.cycles,
+        source,
+        appId: caller.id,
+        deviceId: body.device,
+      });
+    } else if (!text) {
+      text = event ?? "ok";
+    }
 
     let frame = null;
     if (body.channel) {
@@ -227,6 +282,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       accepted: true,
       queue: queueSize(),
       event: event ?? null,
+      automations: automationHits,
       frame,
     });
   });

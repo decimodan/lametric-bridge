@@ -2,6 +2,13 @@
 
 # Decisions made
 
+## 2026-08-25 — Connection automations / Sentinel (PRODUCT-00007)
+
+- Extended IFTTT rules with source **Conexiones** (app + event), starting with Sentinel.
+- Webhook matches `app name` + `event`; if rules fire, skips default notify to avoid doubles.
+- Template vars: `{{ name }}`, `{{ hot_free }}`, `{{ text }}`, `{{ event }}`.
+- Sentinel webhook payload now includes `name` and `hot_free` when available.
+
 ## 2026-08-25 — Card automations IFTTT-style (PRODUCT-00006)
 
 - Added `card_automations`: SI entidad HA (cambia / es / > / <) → ENTONCES card → reloj.
