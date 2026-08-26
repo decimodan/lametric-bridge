@@ -60,6 +60,17 @@ Optional overrides: `text`, `icon`, `priority`, `sound` on top of the card defau
 
 Built-in presets (seeded): `paquete`, `puerta`, `alarma`, `visita`, `llamada`, `reunion`, `recordatorio`, `temp-alta`, `ok`, `cena`.
 
+### Card automations (IFTTT)
+
+In the panel **Alertas** tab, create rules:
+
+```
+SI  binary_sensor.puerta  cambia
+ENTONCES  card:puerta  EN  ulanzi-cocina
+```
+
+Triggers: `change` | `equals` | `gt` | `lt` (edge-triggered). Card text may use `{{ state }}`, `{{ name }}`, `{{ unit }}`.
+
 ### Multiple Ulanzi clocks
 
 Add each AWTRIX clock in **Relojes** with a unique slug (e.g. `ulanzi`, `ulanzi-cocina`). Env only upserts the first as `ulanzi` (`AWTRIX_BASE_URL`); extras are panel-managed.

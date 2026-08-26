@@ -165,7 +165,7 @@
         <article class="card card-dark">
           <header class="card-head">
             <h2>Crear card</h2>
-            <p class="hint">Slug único para el API. Iconos desde la pestaña Iconos.</p>
+            <p class="hint">Slug único para el API. En el texto podés usar <code>{{ state }}</code>, <code>{{ name }}</code>, <code>{{ unit }}</code>.</p>
           </header>
           <form id="cardForm" class="stack">
             <input type="hidden" name="id" id="cardEditId" value="" />
@@ -203,6 +203,54 @@
           </form>
         </article>
       </div>
+
+      <article class="card" style="margin-top:1.25rem">
+        <header class="card-head">
+          <h2>Automatizaciones (IF → THEN)</h2>
+          <p class="hint">
+            Como IFTTT: elegí un sensor de Home Assistant, cuándo dispara, qué card enviar y a qué reloj.
+          </p>
+        </header>
+
+        <form id="autoForm" class="stack ifttt-form">
+          <div class="ifttt-row">
+            <span class="ifttt-label">SI</span>
+            <label class="grow">Entidad HA
+              <input name="entityId" id="autoEntityId" list="autoEntityList" placeholder="binary_sensor.puerta" required />
+              <datalist id="autoEntityList"></datalist>
+            </label>
+            <button type="button" class="secondary" id="autoSearchBtn">Buscar HA</button>
+            <label>Cuando
+              <select name="trigger" id="autoTrigger">
+                <option value="change">cambia</option>
+                <option value="equals">es igual a</option>
+                <option value="gt">es &gt;</option>
+                <option value="lt">es &lt;</option>
+              </select>
+            </label>
+            <label id="autoValueWrap" hidden>Valor
+              <input name="triggerValue" id="autoTriggerValue" placeholder="on / 30" />
+            </label>
+          </div>
+          <div class="ifttt-row">
+            <span class="ifttt-label">ENTONCES</span>
+            <label class="grow">Card
+              <select name="cardId" id="autoCardSelect" required>
+                <option value="">— elegí una card —</option>
+              </select>
+            </label>
+            <label>Reloj
+              <select name="deviceId" id="autoDeviceSelect">
+                <option value="">Todos</option>
+              </select>
+            </label>
+            <button type="submit" class="btn-lime">Crear regla</button>
+          </div>
+          <p class="msg" id="autoMsg"></p>
+        </form>
+
+        <ul id="autoList" class="list" style="margin-top:1rem"></ul>
+      </article>
     </section>
 
     <section id="tab-icons" class="panel">

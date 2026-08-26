@@ -2,6 +2,12 @@
 
 # Decisions made
 
+## 2026-08-25 — Card automations IFTTT-style (PRODUCT-00006)
+
+- Added `card_automations`: SI entidad HA (cambia / es / > / <) → ENTONCES card → reloj.
+- Card text supports `{{ state }}`, `{{ name }}`, `{{ unit }}` when fired from HA.
+- Panel **Alertas** section for creating/pausing/testing rules; HA WS + poll watch those entities.
+
 ## 2026-08-25 — Alert cards (PRODUCT-00005)
 
 - Added reusable alert cards (DB table `alert_cards`) with seeded presets and user-created cards.

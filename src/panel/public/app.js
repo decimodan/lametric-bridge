@@ -31,6 +31,7 @@ $$("#tabs button").forEach((btn) => {
     }
     if (btn.dataset.tab === "cards") {
       loadCards().catch((e) => setMsg($("#cardMsg"), e.message, "error"));
+      loadAutomations().catch((e) => setMsg($("#autoMsg"), e.message, "error"));
     }
     if (btn.dataset.tab === "queue") {
       loadQueueTab().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
@@ -84,7 +85,7 @@ function deviceOptions(selected = "", includeAll = true) {
 }
 
 function fillDeviceSelects() {
-  $$("#notifyDevice, #haDeviceSelect, #cardDeviceSelect").forEach((sel) => {
+  $$("#notifyDevice, #haDeviceSelect, #cardDeviceSelect, #autoDeviceSelect").forEach((sel) => {
     const current = sel.value;
     sel.innerHTML = deviceOptions(current, true);
   });
@@ -283,6 +284,7 @@ async function loadCards() {
   fillDeviceSelects();
   const { cards } = await api("/panel/api/cards");
   cachedCards = cards || [];
+  fillCardSelect();
   const grid = $("#alertCardGrid");
   grid.innerHTML = "";
   if (!cachedCards.length) {
@@ -357,6 +359,161 @@ async function loadCards() {
   });
 }
 
+function fillCardSelect() {
+  const sel = $("#autoCardSelect");
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML =
+    `<option value="">— elegí una card —</option>` +
+    cachedCards
+      .map(
+        (c) =>
+          `<option value="${escapeHtml(c.id)}" ${current === c.id ? "selected" : ""}>${escapeHtml(c.name)} (${escapeHtml(c.slug)})</option>`,
+      )
+      .join("");
+}
+
+function triggerLabel(trigger, value) {
+  if (trigger === "equals") return `es igual a “${value ?? ""}”`;
+  if (trigger === "gt") return `es > ${value ?? ""}`;
+  if (trigger === "lt") return `es < ${value ?? ""}`;
+  return "cambia";
+}
+
+async function loadAutomations() {
+  fillDeviceSelects();
+  fillCardSelect();
+  const { automations } = await api("/panel/api/automations");
+  const list = $("#autoList");
+  list.innerHTML = "";
+  if (!automations.length) {
+    const li = document.createElement("li");
+    li.innerHTML = `<div class="meta">Sin reglas. Armá una arriba: SI sensor → ENTONCES card en reloj.</div>`;
+    list.appendChild(li);
+    return;
+  }
+  for (const a of automations) {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div class="auto-rule">
+        <div>
+          <strong>${escapeHtml(a.name || a.cardName || "regla")}</strong>
+          ${a.enabled ? "" : `<span class="badge">pausada</span>`}
+          <div class="rule-if">SI ${escapeHtml(a.entityId)} ${escapeHtml(triggerLabel(a.trigger, a.triggerValue))}</div>
+          <div class="rule-then">ENTONCES <code>${escapeHtml(a.cardSlug || a.cardId)}</code>
+            → ${escapeHtml(a.deviceName || a.deviceSlug || "todos")}
+          </div>
+          <div class="meta">last ${escapeHtml(String(a.lastValue ?? "—"))}${a.lastSentAt ? ` · sent ${escapeHtml(String(a.lastSentAt))}` : ""}</div>
+        </div>
+        <div class="rule-actions">
+          <button type="button" class="secondary" data-test-auto="${a.id}">Probar</button>
+          <button type="button" class="secondary" data-toggle-auto="${a.id}" data-enabled="${a.enabled ? "1" : "0"}">${a.enabled ? "Pausar" : "Activar"}</button>
+          <button type="button" class="danger" data-del-auto="${a.id}">Borrar</button>
+        </div>
+      </div>`;
+    list.appendChild(li);
+  }
+
+  list.querySelectorAll("[data-test-auto]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/automations/${btn.dataset.testAuto}/test`, {
+          method: "POST",
+          body: "{}",
+        });
+        setMsg($("#autoMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#autoMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-toggle-auto]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const enabled = btn.dataset.enabled !== "1";
+        await api(`/panel/api/automations/${btn.dataset.toggleAuto}`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled }),
+        });
+        setMsg($("#autoMsg"), enabled ? "Activada" : "Pausada", "ok");
+        await loadAutomations();
+      } catch (err) {
+        setMsg($("#autoMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-del-auto]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/panel/api/automations/${btn.dataset.delAuto}`, { method: "DELETE" });
+        setMsg($("#autoMsg"), "Regla eliminada", "ok");
+        await loadAutomations();
+      } catch (err) {
+        setMsg($("#autoMsg"), err.message, "error");
+      }
+    });
+  });
+}
+
+function syncAutoValueVisibility() {
+  const trigger = $("#autoTrigger").value;
+  const wrap = $("#autoValueWrap");
+  wrap.hidden = trigger === "change";
+  if (trigger === "change") $("#autoTriggerValue").value = "";
+}
+
+$("#autoTrigger").addEventListener("change", syncAutoValueVisibility);
+
+$("#autoSearchBtn").addEventListener("click", async () => {
+  try {
+    const q = $("#autoEntityId").value.trim();
+    const { states } = await api(`/panel/api/ha/states?q=${encodeURIComponent(q || "")}`);
+    const dl = $("#autoEntityList");
+    dl.innerHTML = "";
+    for (const s of (states || []).slice(0, 40)) {
+      const opt = document.createElement("option");
+      opt.value = s.entity_id;
+      opt.label = `${s.friendly_name || s.entity_id} = ${s.state}`;
+      dl.appendChild(opt);
+    }
+    setMsg(
+      $("#autoMsg"),
+      states?.length ? `${states.length} entidades (elegí del datalist)` : "Sin resultados",
+      states?.length ? "ok" : "error",
+    );
+  } catch (err) {
+    setMsg($("#autoMsg"), err.message, "error");
+  }
+});
+
+$("#autoForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const trigger = String(fd.get("trigger") || "change");
+  try {
+    await api("/panel/api/automations", {
+      method: "POST",
+      body: JSON.stringify({
+        cardId: fd.get("cardId"),
+        entityId: String(fd.get("entityId") || "").trim(),
+        deviceId: fd.get("deviceId") || null,
+        trigger,
+        triggerValue: trigger === "change" ? null : String(fd.get("triggerValue") || "").trim(),
+      }),
+    });
+    e.target.reset();
+    syncAutoValueVisibility();
+    fillCardSelect();
+    fillDeviceSelects();
+    setMsg($("#autoMsg"), "Regla creada", "ok");
+    await loadAutomations();
+  } catch (err) {
+    setMsg($("#autoMsg"), err.message, "error");
+  }
+});
+
 function resetCardForm() {
   const form = $("#cardForm");
   form.reset();
@@ -396,6 +553,7 @@ $("#cardForm").addEventListener("submit", async (e) => {
     }
     resetCardForm();
     await loadCards();
+    await loadAutomations();
   } catch (err) {
     setMsg($("#cardMsg"), err.message, "error");
   }
@@ -1024,6 +1182,8 @@ function escapeHtml(s) {
   await refreshStatus();
   await loadDevices();
   await loadCards();
+  await loadAutomations();
+  syncAutoValueVisibility();
   await loadApps();
   await loadChannels();
   await loadHa();
