@@ -208,29 +208,52 @@
         <header class="card-head">
           <h2>Automatizaciones (IF → THEN)</h2>
           <p class="hint">
-            Como IFTTT: elegí un sensor de Home Assistant, cuándo dispara, qué card enviar y a qué reloj.
+            Como IFTTT: fuente <strong>Conexiones</strong> (Sentinel) o Home Assistant → card → reloj.
           </p>
         </header>
 
         <form id="autoForm" class="stack ifttt-form">
           <div class="ifttt-row">
             <span class="ifttt-label">SI</span>
-            <label class="grow">Entidad HA
-              <input name="entityId" id="autoEntityId" list="autoEntityList" placeholder="binary_sensor.puerta" required />
-              <datalist id="autoEntityList"></datalist>
-            </label>
-            <button type="button" class="secondary" id="autoSearchBtn">Buscar HA</button>
-            <label>Cuando
-              <select name="trigger" id="autoTrigger">
-                <option value="change">cambia</option>
-                <option value="equals">es igual a</option>
-                <option value="gt">es &gt;</option>
-                <option value="lt">es &lt;</option>
+            <label>Fuente
+              <select name="source" id="autoSource">
+                <option value="connection">Conexiones</option>
+                <option value="ha">Home Assistant</option>
               </select>
             </label>
-            <label id="autoValueWrap" hidden>Valor
-              <input name="triggerValue" id="autoTriggerValue" placeholder="on / 30" />
-            </label>
+            <div id="autoHaFields" class="ifttt-row" hidden>
+              <label class="grow">Entidad HA
+                <input name="entityId" id="autoEntityId" list="autoEntityList" placeholder="binary_sensor.puerta" />
+                <datalist id="autoEntityList"></datalist>
+              </label>
+              <button type="button" class="secondary" id="autoSearchBtn">Buscar HA</button>
+              <label>Cuando
+                <select name="trigger" id="autoTrigger">
+                  <option value="change">cambia</option>
+                  <option value="equals">es igual a</option>
+                  <option value="gt">es &gt;</option>
+                  <option value="lt">es &lt;</option>
+                </select>
+              </label>
+              <label id="autoValueWrap" hidden>Valor
+                <input name="triggerValue" id="autoTriggerValue" placeholder="on / 30" />
+              </label>
+            </div>
+            <div id="autoConnFields" class="ifttt-row">
+              <label>App
+                <select name="appName" id="autoAppSelect">
+                  <option value="sentinel">Sentinel</option>
+                </select>
+              </label>
+              <label class="grow">Evento
+                <select name="eventName" id="autoEventSelect">
+                  <option value="torrent.added">Nueva tarea</option>
+                  <option value="torrent.completed">Descarga terminada</option>
+                  <option value="torrent.removed">Tarea eliminada</option>
+                  <option value="copy.done">Copia terminada</option>
+                </select>
+              </label>
+            </div>
           </div>
           <div class="ifttt-row">
             <span class="ifttt-label">ENTONCES</span>
@@ -246,6 +269,7 @@
             </label>
             <button type="submit" class="btn-lime">Crear regla</button>
           </div>
+          <p class="hint">Conexiones: el app del panel debe llamarse igual (ej. <code>sentinel</code>). Vars: <code>{{ name }}</code>, <code>{{ hot_free }}</code>, <code>{{ text }}</code>, <code>{{ event }}</code>.</p>
           <p class="msg" id="autoMsg"></p>
         </form>
 

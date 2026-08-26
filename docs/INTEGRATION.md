@@ -62,14 +62,27 @@ Built-in presets (seeded): `paquete`, `puerta`, `alarma`, `visita`, `llamada`, `
 
 ### Card automations (IFTTT)
 
-In the panel **Alertas** tab, create rules:
+In the panel **Alertas** tab, create rules from two sources:
 
+**Home Assistant**
 ```
 SI  binary_sensor.puerta  cambia
 ENTONCES  card:puerta  EN  ulanzi-cocina
 ```
 
-Triggers: `change` | `equals` | `gt` | `lt` (edge-triggered). Card text may use `{{ state }}`, `{{ name }}`, `{{ unit }}`.
+**Conexiones** (LAN apps via webhook — e.g. Sentinel)
+```
+SI  Sentinel → torrent.added
+ENTONCES  card:sentinel-nueva  EN  ulanzi
+
+SI  Sentinel → torrent.completed
+ENTONCES  card:sentinel-done  EN  lametric
+```
+
+The panel app name must match (`sentinel`). When a connection rule matches an event, the default webhook text is skipped (no double notify).
+
+HA triggers: `change` | `equals` | `gt` | `lt`.  
+Card text may use `{{ state }}`, `{{ name }}`, `{{ unit }}`, and for connections also `{{ hot_free }}`, `{{ text }}`, `{{ event }}`.
 
 ### Multiple Ulanzi clocks
 

@@ -47,8 +47,11 @@ import {
   saveCard,
 } from "../services/cards.js";
 import {
+  CONNECTION_CATALOG,
+  connectionTemplateVars,
   deleteAutomation,
   getAutomation,
+  haTemplateVars,
   listAutomations,
   publicAutomation,
   renderCardText,
@@ -452,6 +455,10 @@ function registerPanelApi(app: FastifyInstance): void {
     return result;
   });
 
+  app.get("/panel/api/connections", async () => ({
+    connections: CONNECTION_CATALOG,
+  }));
+
   app.get("/panel/api/automations", async () => {
     const autos = await listAutomations();
     const devices = await listDevices();
@@ -474,8 +481,11 @@ function registerPanelApi(app: FastifyInstance): void {
     const parsed = z
       .object({
         name: z.string().max(128).optional(),
+        source: z.enum(["ha", "connection"]).optional(),
         cardId: z.string().min(1),
-        entityId: z.string().min(1).max(128),
+        entityId: z.string().min(1).max(128).nullable().optional(),
+        appName: z.string().min(1).max(64).nullable().optional(),
+        eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
         enabled: z.boolean().optional(),
         trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
@@ -488,8 +498,11 @@ function registerPanelApi(app: FastifyInstance): void {
     try {
       const auto = await saveAutomation({
         name: parsed.data.name,
+        source: parsed.data.source,
         cardId: parsed.data.cardId,
         entityId: parsed.data.entityId,
+        appName: parsed.data.appName,
+        eventName: parsed.data.eventName,
         deviceId: parsed.data.deviceId ?? null,
         enabled: parsed.data.enabled,
         trigger: parsed.data.trigger,
@@ -518,8 +531,11 @@ function registerPanelApi(app: FastifyInstance): void {
     const parsed = z
       .object({
         name: z.string().max(128).optional(),
+        source: z.enum(["ha", "connection"]).optional(),
         cardId: z.string().min(1).optional(),
-        entityId: z.string().min(1).max(128).optional(),
+        entityId: z.string().min(1).max(128).nullable().optional(),
+        appName: z.string().min(1).max(64).nullable().optional(),
+        eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
         enabled: z.boolean().optional(),
         trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
@@ -550,8 +566,20 @@ function registerPanelApi(app: FastifyInstance): void {
       const auto = await saveAutomation({
         id,
         name: parsed.data.name ?? existing.name,
+        source: parsed.data.source ?? existing.source,
         cardId: parsed.data.cardId ?? existing.cardId,
-        entityId: parsed.data.entityId ?? existing.entityId,
+        entityId:
+          parsed.data.entityId === undefined
+            ? existing.entityId
+            : parsed.data.entityId,
+        appName:
+          parsed.data.appName === undefined
+            ? existing.appName
+            : parsed.data.appName,
+        eventName:
+          parsed.data.eventName === undefined
+            ? existing.eventName
+            : parsed.data.eventName,
         deviceId:
           parsed.data.deviceId === undefined
             ? existing.deviceId
@@ -594,20 +622,32 @@ function registerPanelApi(app: FastifyInstance): void {
     const card = await getCard(auto.cardId);
     if (!card) return reply.code(404).send({ error: "Card not found" });
 
-    let state = "test";
-    let attributes: Record<string, unknown> = {};
-    try {
-      const states = await fetchHaStates();
-      const s = states.find((x) => x.entity_id === auto.entityId);
-      if (s) {
-        state = s.state;
-        attributes = s.attributes ?? {};
+    let vars: Record<string, string>;
+    if (auto.source === "connection") {
+      vars = connectionTemplateVars({
+        event: auto.eventName ?? "test",
+        app: auto.appName ?? "app",
+        text: "prueba Sentinel",
+        hotFree: "42G",
+        name: "Show.S01",
+      });
+    } else {
+      let state = "test";
+      let attributes: Record<string, unknown> = {};
+      try {
+        const states = await fetchHaStates();
+        const s = states.find((x) => x.entity_id === auto.entityId);
+        if (s) {
+          state = s.state;
+          attributes = s.attributes ?? {};
+        }
+      } catch {
+        /* use placeholder */
       }
-    } catch {
-      /* use placeholder */
+      vars = haTemplateVars(state, attributes, auto.entityId ?? "entity");
     }
 
-    const text = renderCardText(card, state, attributes, auto.entityId);
+    const text = renderCardText(card, vars);
     enqueue({
       text: text || card.text,
       icon: card.icon,
