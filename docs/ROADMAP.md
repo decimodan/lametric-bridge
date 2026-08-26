@@ -12,7 +12,7 @@
 - PRODUCT-00002: Panel color scheme → dark + neon purple accents
 - PRODUCT-00004: App webhook (`POST /api/v1/webhook`) for Sentinel / LAN apps — deployed to `lametric.lan`
 - PRODUCT-00005: Alert cards — presets + custom cards in panel, send to any clock slug; `card` field on `/notify` and `/webhook` — deployed to `lametric.lan`
-- PRODUCT-00006: Card automations (IFTTT) — HA sensor → card → clock from Alertas tab
+- PRODUCT-00006: Card automations (IFTTT) — HA sensor → card → clock from Alertas tab — deployed to `lametric.lan`
 
 ## Next
 
