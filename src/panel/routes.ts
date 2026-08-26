@@ -47,6 +47,15 @@ import {
   saveCard,
 } from "../services/cards.js";
 import {
+  deleteAutomation,
+  getAutomation,
+  listAutomations,
+  publicAutomation,
+  renderCardText,
+  saveAutomation,
+  setAutomationEnabled,
+} from "../services/cardAutomations.js";
+import {
   deleteDevice,
   getDevice,
   listDevices,
@@ -55,6 +64,7 @@ import {
 } from "../services/devices.js";
 import {
   clearQueue,
+  enqueue,
   getCurrentQueueItem,
   listNotifyLog,
   listQueue,
@@ -440,6 +450,180 @@ function registerPanelApi(app: FastifyInstance): void {
       result.detail,
     );
     return result;
+  });
+
+  app.get("/panel/api/automations", async () => {
+    const autos = await listAutomations();
+    const devices = await listDevices();
+    const deviceById = new Map(devices.map((d) => [d.id, d]));
+    const enriched = await Promise.all(
+      autos.map(async (auto) => {
+        const card = await getCard(auto.cardId);
+        const device = auto.deviceId ? deviceById.get(auto.deviceId) : null;
+        return publicAutomation(auto, {
+          card,
+          deviceName: device?.name ?? (auto.deviceId ? null : "todos"),
+          deviceSlug: device?.slug ?? null,
+        });
+      }),
+    );
+    return { automations: enriched };
+  });
+
+  app.post("/panel/api/automations", async (request, reply) => {
+    const parsed = z
+      .object({
+        name: z.string().max(128).optional(),
+        cardId: z.string().min(1),
+        entityId: z.string().min(1).max(128),
+        deviceId: z.string().min(1).max(64).nullable().optional(),
+        enabled: z.boolean().optional(),
+        trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
+        triggerValue: z.string().max(128).nullable().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const auto = await saveAutomation({
+        name: parsed.data.name,
+        cardId: parsed.data.cardId,
+        entityId: parsed.data.entityId,
+        deviceId: parsed.data.deviceId ?? null,
+        enabled: parsed.data.enabled,
+        trigger: parsed.data.trigger,
+        triggerValue: parsed.data.triggerValue,
+      });
+      const card = await getCard(auto.cardId);
+      const device = auto.deviceId ? await getDevice(auto.deviceId) : null;
+      return {
+        automation: publicAutomation(auto, {
+          card,
+          deviceName: device?.name ?? "todos",
+          deviceSlug: device?.slug ?? null,
+        }),
+      };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.patch("/panel/api/automations/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await getAutomation(id);
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    const parsed = z
+      .object({
+        name: z.string().max(128).optional(),
+        cardId: z.string().min(1).optional(),
+        entityId: z.string().min(1).max(128).optional(),
+        deviceId: z.string().min(1).max(64).nullable().optional(),
+        enabled: z.boolean().optional(),
+        trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
+        triggerValue: z.string().max(128).nullable().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      if (
+        parsed.data.enabled !== undefined &&
+        Object.keys(parsed.data).length === 1
+      ) {
+        const auto = await setAutomationEnabled(id, parsed.data.enabled);
+        const card = auto ? await getCard(auto.cardId) : null;
+        const device = auto?.deviceId ? await getDevice(auto.deviceId) : null;
+        return {
+          automation: auto
+            ? publicAutomation(auto, {
+                card,
+                deviceName: device?.name ?? "todos",
+                deviceSlug: device?.slug ?? null,
+              })
+            : null,
+        };
+      }
+      const auto = await saveAutomation({
+        id,
+        name: parsed.data.name ?? existing.name,
+        cardId: parsed.data.cardId ?? existing.cardId,
+        entityId: parsed.data.entityId ?? existing.entityId,
+        deviceId:
+          parsed.data.deviceId === undefined
+            ? existing.deviceId
+            : parsed.data.deviceId,
+        enabled: parsed.data.enabled ?? existing.enabled,
+        trigger: parsed.data.trigger ?? existing.trigger,
+        triggerValue:
+          parsed.data.triggerValue === undefined
+            ? existing.triggerValue
+            : parsed.data.triggerValue,
+      });
+      const card = await getCard(auto.cardId);
+      const device = auto.deviceId ? await getDevice(auto.deviceId) : null;
+      return {
+        automation: publicAutomation(auto, {
+          card,
+          deviceName: device?.name ?? "todos",
+          deviceSlug: device?.slug ?? null,
+        }),
+      };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.delete("/panel/api/automations/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!(await deleteAutomation(id))) {
+      return reply.code(404).send({ error: "Not found" });
+    }
+    return { ok: true };
+  });
+
+  app.post("/panel/api/automations/:id/test", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const auto = await getAutomation(id);
+    if (!auto) return reply.code(404).send({ error: "Not found" });
+    const card = await getCard(auto.cardId);
+    if (!card) return reply.code(404).send({ error: "Card not found" });
+
+    let state = "test";
+    let attributes: Record<string, unknown> = {};
+    try {
+      const states = await fetchHaStates();
+      const s = states.find((x) => x.entity_id === auto.entityId);
+      if (s) {
+        state = s.state;
+        attributes = s.attributes ?? {};
+      }
+    } catch {
+      /* use placeholder */
+    }
+
+    const text = renderCardText(card, state, attributes, auto.entityId);
+    enqueue({
+      text: text || card.text,
+      icon: card.icon,
+      priority: card.priority,
+      sound: card.sound,
+      source: `card-auto-test:${card.slug}`,
+      deviceId: auto.deviceId ?? undefined,
+    });
+    await logNotify(
+      `card-auto-test:${card.slug}`,
+      text || card.text,
+      card.priority,
+      "ok",
+      `queued → ${auto.deviceId ?? "all"}`,
+    );
+    return { ok: true, detail: `Queued: ${text || card.text}`, queue: queueSize() };
   });
 
   app.get("/panel/api/apps", async () => ({ apps: await listApps() }));

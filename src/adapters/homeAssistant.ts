@@ -3,6 +3,15 @@ import WebSocket from "ws";
 import { query, type HaConfigRow, type HaEntityRow } from "../db/index.js";
 import { decryptSecret, encryptSecret } from "../db/crypto.js";
 import { pushAwtrixApp } from "./awtrix.js";
+import { getCard } from "../services/cards.js";
+import {
+  listEnabledAutomationsForEntity,
+  listWatchedAutomationEntityIds,
+  markAutomationSent,
+  renderCardText,
+  shouldFireAutomation,
+  touchAutomationValue,
+} from "../services/cardAutomations.js";
 import { upsertFrame } from "../services/channels.js";
 import { getDevice, listDevices, resolveDevices } from "../services/devices.js";
 import { enqueue, queueSize } from "../services/queue.js";
@@ -352,7 +361,6 @@ async function handleState(
     [entityId],
   );
   const mappings = res.rows;
-  if (!mappings.length) return;
 
   for (const mapping of mappings) {
     // Notify + interval: cadence is owned by the interval ticker (avoid flood).
@@ -360,6 +368,44 @@ async function handleState(
     if (mapping.mode === "notify" && isIntervalDriven(mapping)) continue;
     if (!shouldEmitForStateChange(mapping, state)) continue;
     await emitEntity(mapping, state, attributes, "ha");
+  }
+
+  await handleCardAutomations(entityId, state, attributes);
+}
+
+async function handleCardAutomations(
+  entityId: string,
+  state: string,
+  attributes: Record<string, unknown>,
+): Promise<void> {
+  const autos = await listEnabledAutomationsForEntity(entityId);
+  for (const auto of autos) {
+    const fire = shouldFireAutomation(auto, state);
+    if (!fire) {
+      if (auto.lastValue !== state) {
+        await touchAutomationValue(auto.id, state);
+      }
+      continue;
+    }
+
+    const card = await getCard(auto.cardId);
+    if (!card) continue;
+
+    const text = renderCardText(card, state, attributes, entityId);
+    if (!text) {
+      await touchAutomationValue(auto.id, state);
+      continue;
+    }
+
+    enqueue({
+      text,
+      icon: card.icon,
+      priority: card.priority,
+      sound: card.sound,
+      source: `card-auto:${card.slug}:${entityId}`,
+      deviceId: auto.deviceId ?? undefined,
+    });
+    await markAutomationSent(auto.id, state);
   }
 }
 
@@ -560,6 +606,9 @@ function startPollingFallback(): void {
         const watched = new Set(
           (await listHaEntities()).map((e) => e.entity_id),
         );
+        for (const id of await listWatchedAutomationEntityIds()) {
+          watched.add(id);
+        }
         for (const s of states) {
           if (watched.has(s.entity_id)) {
             await handleState(s.entity_id, s.state, s.attributes ?? {});
