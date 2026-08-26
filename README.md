@@ -7,6 +7,7 @@ Bridge entre aplicaciones locales / Home Assistant y relojes [LaMetric Time](htt
 - Recibe notificaciones y frames desde apps de la LAN (`X-API-Key`)
 - Integra Home Assistant (WebSocket + polling fallback)
 - Envía notificaciones a LaMetric y/o Ulanzi (AWTRIX), identificables por slug
+- Alertas prediseñadas y cards personalizadas (panel **Alertas** / `card` en el API)
 - Controla brillo desde el panel
 - Expone frames persistentes en `/lametric/frames` para un Indicator App
 - Panel web de configuración (basic auth)

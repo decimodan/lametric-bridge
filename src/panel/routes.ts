@@ -40,6 +40,13 @@ import {
   upsertFrame,
 } from "../services/channels.js";
 import {
+  deleteCard,
+  getCard,
+  listCards,
+  publicCard,
+  saveCard,
+} from "../services/cards.js";
+import {
   deleteDevice,
   getDevice,
   listDevices,
@@ -317,6 +324,118 @@ function registerPanelApi(app: FastifyInstance): void {
       "panel",
       body.text,
       body.priority ?? "info",
+      result.ok ? "ok" : "error",
+      result.detail,
+    );
+    return result;
+  });
+
+  app.get("/panel/api/cards", async () => ({
+    cards: (await listCards()).map(publicCard),
+  }));
+
+  app.post("/panel/api/cards", async (request, reply) => {
+    const parsed = z
+      .object({
+        slug: z.string().min(1).max(32),
+        name: z.string().min(1).max(64),
+        text: z.string().min(1).max(256),
+        icon: z.string().max(64).optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        sortOrder: z.number().int().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const card = await saveCard(parsed.data);
+      return { card: publicCard(card) };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.patch("/panel/api/cards/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await getCard(id);
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    const parsed = z
+      .object({
+        slug: z.string().min(1).max(32).optional(),
+        name: z.string().min(1).max(64).optional(),
+        text: z.string().min(1).max(256).optional(),
+        icon: z.string().max(64).optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        sortOrder: z.number().int().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    try {
+      const card = await saveCard({
+        id: existing.id,
+        slug: parsed.data.slug ?? existing.slug,
+        name: parsed.data.name ?? existing.name,
+        text: parsed.data.text ?? existing.text,
+        icon: parsed.data.icon ?? existing.icon,
+        priority: parsed.data.priority ?? existing.priority,
+        sound: parsed.data.sound ?? existing.sound,
+        sortOrder: parsed.data.sortOrder ?? existing.sortOrder,
+      });
+      return { card: publicCard(card) };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.delete("/panel/api/cards/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    try {
+      if (!(await deleteCard(id))) {
+        return reply.code(404).send({ error: "Not found" });
+      }
+      return { ok: true };
+    } catch (err) {
+      return reply.code(409).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.post("/panel/api/cards/:id/send", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const card = await getCard(id);
+    if (!card) return reply.code(404).send({ error: "Not found" });
+    const parsed = z
+      .object({
+        device: z.string().min(1).max(64).optional(),
+        text: z.string().min(1).max(256).optional(),
+      })
+      .safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const text = parsed.data.text?.trim() || card.text;
+    const result = await dispatchNotification({
+      text,
+      icon: card.icon,
+      priority: card.priority,
+      sound: card.sound,
+      source: `card:${card.slug}`,
+      deviceId: parsed.data.device,
+    });
+    await logNotify(
+      `card:${card.slug}`,
+      text,
+      card.priority,
       result.ok ? "ok" : "error",
       result.detail,
     );

@@ -2,6 +2,13 @@
 
 # Decisions made
 
+## 2026-08-25 — Alert cards (PRODUCT-00005)
+
+- Added reusable alert cards (DB table `alert_cards`) with seeded presets and user-created cards.
+- Panel tab **Alertas**: pick destination clock (any slug, including multiple Ulanzi), one-click send, create/edit/delete custom cards (presets editable, not deletable).
+- Ingest: `card` on `POST /api/v1/notify` and `/webhook`; list via `GET /api/v1/cards`.
+- Second+ Ulanzi clocks stay panel-managed with unique slugs; env still only upserts `ulanzi` from `AWTRIX_BASE_URL`.
+
 ## 2026-08-25 — App webhook for Sentinel
 
 - Added `POST /api/v1/webhook` (API key) as an event-oriented ingest alongside `/notify`.

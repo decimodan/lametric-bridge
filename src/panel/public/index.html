@@ -17,6 +17,7 @@
     </div>
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="device" class="active">Relojes</button>
+      <button type="button" data-tab="cards">Alertas</button>
       <button type="button" data-tab="queue">Cola</button>
       <button type="button" data-tab="icons">Iconos</button>
       <button type="button" data-tab="apps">Apps</button>
@@ -128,6 +129,77 @@
               <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
             </div>
             <p class="msg" id="notifyMsg"></p>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-cards" class="panel">
+      <header class="section-head">
+        <h1>Alertas / cards</h1>
+        <p class="hint">
+          Tarjetas prediseñadas y personalizadas. Elegí el reloj destino
+          (incluidos varios Ulanzi) y enviá con un clic. En el API usá
+          <code>{"card":"paquete","device":"ulanzi"}</code>.
+        </p>
+      </header>
+
+      <div class="row cards-toolbar">
+        <label>Destino
+          <select id="cardDeviceSelect">
+            <option value="">Todos</option>
+          </select>
+        </label>
+        <p class="msg" id="cardMsg"></p>
+      </div>
+
+      <div class="widget-grid two-col">
+        <article class="card">
+          <header class="card-head">
+            <h2>Biblioteca</h2>
+            <p class="hint">Presets + tus cards. Clic en Enviar → destino seleccionado arriba.</p>
+          </header>
+          <div class="alert-card-grid" id="alertCardGrid"></div>
+        </article>
+
+        <article class="card card-dark">
+          <header class="card-head">
+            <h2>Crear card</h2>
+            <p class="hint">Slug único para el API. Iconos desde la pestaña Iconos.</p>
+          </header>
+          <form id="cardForm" class="stack">
+            <input type="hidden" name="id" id="cardEditId" value="" />
+            <div class="row">
+              <label>Nombre
+                <input name="name" placeholder="Paquete cocina" required />
+              </label>
+              <label>Slug
+                <input name="slug" placeholder="paquete-cocina" required />
+              </label>
+            </div>
+            <label>Texto en el reloj
+              <input name="text" maxlength="256" placeholder="Llego un paquete" required />
+            </label>
+            <div class="row">
+              <label>Icono
+                <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
+              </label>
+              <label>Prioridad
+                <select name="priority">
+                  <option value="info">info</option>
+                  <option value="warning">warning</option>
+                  <option value="critical">critical</option>
+                </select>
+              </label>
+              <label class="check">
+                <input name="sound" type="checkbox" />
+                Sonido
+              </label>
+            </div>
+            <div class="row">
+              <button type="submit" class="btn-lime" id="cardSaveBtn">Crear</button>
+              <button type="button" class="secondary" id="cardCancelEdit" hidden>Cancelar</button>
+            </div>
           </form>
         </article>
       </div>

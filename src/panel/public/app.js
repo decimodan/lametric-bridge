@@ -29,6 +29,9 @@ $$("#tabs button").forEach((btn) => {
     if (btn.dataset.tab === "device") {
       loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
     }
+    if (btn.dataset.tab === "cards") {
+      loadCards().catch((e) => setMsg($("#cardMsg"), e.message, "error"));
+    }
     if (btn.dataset.tab === "queue") {
       loadQueueTab().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
       startQueuePolling();
@@ -81,7 +84,7 @@ function deviceOptions(selected = "", includeAll = true) {
 }
 
 function fillDeviceSelects() {
-  $$("#notifyDevice, #haDeviceSelect").forEach((sel) => {
+  $$("#notifyDevice, #haDeviceSelect, #cardDeviceSelect").forEach((sel) => {
     const current = sel.value;
     sel.innerHTML = deviceOptions(current, true);
   });
@@ -261,6 +264,140 @@ $("#notifyTest").addEventListener("click", async () => {
     });
   } catch (err) {
     setMsg($("#notifyMsg"), err.message, "error");
+  }
+});
+
+/* Alert cards */
+let cachedCards = [];
+
+function priorityBadge(priority) {
+  if (priority === "critical") return `<span class="badge badge-critical">critical</span>`;
+  if (priority === "warning") return `<span class="badge badge-warning">warning</span>`;
+  return "";
+}
+
+async function loadCards() {
+  if (!cachedDevices.length) {
+    await loadDevices();
+  }
+  fillDeviceSelects();
+  const { cards } = await api("/panel/api/cards");
+  cachedCards = cards || [];
+  const grid = $("#alertCardGrid");
+  grid.innerHTML = "";
+  if (!cachedCards.length) {
+    grid.innerHTML = `<p class="meta">No hay cards. Creá una a la derecha.</p>`;
+    return;
+  }
+
+  for (const c of cachedCards) {
+    const tile = document.createElement("article");
+    tile.className = "alert-tile";
+    const preset = c.isPreset ? `<span class="badge badge-preset">preset</span>` : "";
+    const sound = c.sound ? " · sonido" : "";
+    tile.innerHTML = `
+      <header>
+        <p class="tile-name">${escapeHtml(c.name)}</p>
+        <div>${preset}${priorityBadge(c.priority)}</div>
+      </header>
+      <p class="tile-text">${escapeHtml(c.text)}</p>
+      <div class="tile-meta">${escapeHtml(c.slug)} · ${escapeHtml(c.icon)}${sound}</div>
+      <div class="tile-actions">
+        <button type="button" data-send-card="${c.id}">Enviar</button>
+        <button type="button" class="secondary" data-edit-card="${c.id}">Editar</button>
+        ${c.isPreset ? "" : `<button type="button" class="danger" data-del-card="${c.id}">Borrar</button>`}
+      </div>`;
+    grid.appendChild(tile);
+  }
+
+  grid.querySelectorAll("[data-send-card]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/cards/${btn.dataset.sendCard}/send`, {
+          method: "POST",
+          body: JSON.stringify({
+            device: $("#cardDeviceSelect").value || undefined,
+          }),
+        });
+        setMsg($("#cardMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#cardMsg"), err.message, "error");
+      }
+    });
+  });
+
+  grid.querySelectorAll("[data-edit-card]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const card = cachedCards.find((x) => x.id === btn.dataset.editCard);
+      if (!card) return;
+      const form = $("#cardForm");
+      form.name.value = card.name;
+      form.slug.value = card.slug;
+      form.text.value = card.text;
+      form.icon.value = card.icon;
+      form.priority.value = card.priority;
+      form.sound.checked = !!card.sound;
+      $("#cardEditId").value = card.id;
+      $("#cardSaveBtn").textContent = "Guardar";
+      $("#cardCancelEdit").hidden = false;
+      form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  });
+
+  grid.querySelectorAll("[data-del-card]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await api(`/panel/api/cards/${btn.dataset.delCard}`, { method: "DELETE" });
+        setMsg($("#cardMsg"), "Card eliminada", "ok");
+        await loadCards();
+      } catch (err) {
+        setMsg($("#cardMsg"), err.message, "error");
+      }
+    });
+  });
+}
+
+function resetCardForm() {
+  const form = $("#cardForm");
+  form.reset();
+  form.icon.value = "a2867";
+  $("#cardEditId").value = "";
+  $("#cardSaveBtn").textContent = "Crear";
+  $("#cardCancelEdit").hidden = true;
+}
+
+$("#cardCancelEdit").addEventListener("click", () => resetCardForm());
+
+$("#cardForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = String(fd.get("id") || "").trim();
+  const payload = {
+    name: String(fd.get("name") || "").trim(),
+    slug: String(fd.get("slug") || "").trim().toLowerCase(),
+    text: String(fd.get("text") || "").trim(),
+    icon: String(fd.get("icon") || "").trim() || "a2867",
+    priority: fd.get("priority") || "info",
+    sound: fd.get("sound") === "on",
+  };
+  try {
+    if (id) {
+      await api(`/panel/api/cards/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      setMsg($("#cardMsg"), "Card actualizada", "ok");
+    } else {
+      await api("/panel/api/cards", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setMsg($("#cardMsg"), "Card creada", "ok");
+    }
+    resetCardForm();
+    await loadCards();
+  } catch (err) {
+    setMsg($("#cardMsg"), err.message, "error");
   }
 });
 
@@ -886,6 +1023,7 @@ function escapeHtml(s) {
 (async function init() {
   await refreshStatus();
   await loadDevices();
+  await loadCards();
   await loadApps();
   await loadChannels();
   await loadHa();

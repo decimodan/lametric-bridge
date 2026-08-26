@@ -32,11 +32,11 @@ src/
 ## Data flow
 
 1. Ingest (`POST /api/v1/notify` or HA WebSocket event)
-2. Normalize to `Message` (optional `deviceId` / slug)
+2. Normalize to `Message` (optional `deviceId` / slug; optional `card` expands to text/icon/priority/sound)
 3. Priority queue with rate limiting
 4. Dispatch to LaMetric (`https://device:4343`) and/or AWTRIX (`http://device/api/v1/notifications`)
 
-Persistent LaMetric channels write into `frames` and are served from `GET /lametric/frames`. HA `frame` mappings on an AWTRIX clock become a pushed app (`PUT /api/v1/apps/pushed/...`).
+Persistent LaMetric channels write into `frames` and are served from `GET /lametric/frames`. HA `frame` mappings on an AWTRIX clock become a pushed app (`PUT /api/v1/apps/pushed/...`). Alert cards (`alert_cards`) are reusable notify templates managed from the panel.
 
 ## Security
 

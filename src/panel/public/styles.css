@@ -703,3 +703,85 @@ code {
   width: 100%;
   accent-color: var(--neon);
 }
+
+.cards-toolbar {
+  align-items: flex-end;
+  margin-bottom: 1rem;
+  gap: 1rem;
+}
+
+.cards-toolbar .msg {
+  flex: 1;
+  margin: 0;
+}
+
+.alert-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.alert-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  background: rgba(168, 85, 247, 0.06);
+  border: 1px solid rgba(168, 85, 247, 0.16);
+  min-height: 8.5rem;
+}
+
+.alert-tile header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.alert-tile .tile-name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.alert-tile .tile-text {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  flex: 1;
+}
+
+.alert-tile .tile-meta {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.alert-tile .tile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.alert-tile .tile-actions button {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.badge-preset {
+  background: rgba(196, 181, 253, 0.15);
+  color: #c4b5fd;
+}
+
+.badge-critical {
+  background: rgba(255, 92, 122, 0.2);
+  color: #ff8fa3;
+}
+
+.badge-warning {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
