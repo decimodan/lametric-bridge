@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { findAppByApiKey } from "../services/apps.js";
+import { getCard, listCards, publicCard } from "../services/cards.js";
 import {
   createChannel,
   getIndicatorFrames,
@@ -11,19 +12,26 @@ import { listDevices, publicDevice } from "../services/devices.js";
 import { checkRateLimit, enqueue, queueSize } from "../services/queue.js";
 import type { Priority } from "../services/render.js";
 
-const notifySchema = z.object({
-  text: z.string().min(1).max(256),
-  icon: z.string().max(64).optional(),
-  priority: z.enum(["info", "warning", "critical"]).optional(),
-  sound: z.union([z.boolean(), z.string()]).optional(),
-  lifetime: z.number().int().positive().optional(),
-  cycles: z.number().int().positive().optional(),
-  device: z.string().min(1).max(64).optional(),
-});
+const notifySchema = z
+  .object({
+    /** Send a saved alert card by slug/id. Merges with optional overrides. */
+    card: z.string().min(1).max(64).optional(),
+    text: z.string().min(1).max(256).optional(),
+    icon: z.string().max(64).optional(),
+    priority: z.enum(["info", "warning", "critical"]).optional(),
+    sound: z.union([z.boolean(), z.string()]).optional(),
+    lifetime: z.number().int().positive().optional(),
+    cycles: z.number().int().positive().optional(),
+    device: z.string().min(1).max(64).optional(),
+  })
+  .refine((b) => Boolean(b.card || b.text), {
+    message: "Provide text or card",
+  });
 
 /** Event-oriented ingest for apps (Sentinel, etc.). Same queue as /notify. */
 const webhookSchema = z.object({
   event: z.string().min(1).max(64).optional(),
+  card: z.string().min(1).max(64).optional(),
   text: z.string().min(1).max(256).optional(),
   message: z.string().min(1).max(256).optional(),
   icon: z.string().max(64).optional(),
@@ -90,6 +98,12 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     return { devices: (await listDevices()).map(publicDevice) };
   });
 
+  app.get("/api/v1/cards", async (request, reply) => {
+    const caller = await requireApiKey(request, reply);
+    if (!caller) return;
+    return { cards: (await listCards()).map(publicCard) };
+  });
+
   app.post("/api/v1/notify", async (request, reply) => {
     const caller = await requireApiKey(request, reply);
     if (!caller) return;
@@ -100,14 +114,36 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const body = parsed.data;
+    let text = body.text?.trim() ?? "";
+    let icon = body.icon;
+    let priority = body.priority;
+    let sound = body.sound;
+    let source = `app:${caller.name}`;
+
+    if (body.card) {
+      const card = await getCard(body.card);
+      if (!card) {
+        return reply.code(404).send({ error: `Unknown card: ${body.card}` });
+      }
+      text = text || card.text;
+      icon = icon ?? card.icon;
+      priority = priority ?? card.priority;
+      sound = sound ?? card.sound;
+      source = `app:${caller.name}:card:${card.slug}`;
+    }
+
+    if (!text) {
+      return reply.code(400).send({ error: "Provide text or card" });
+    }
+
     enqueue({
-      text: body.text,
-      icon: body.icon,
-      priority: (body.priority ?? "info") as Priority,
-      sound: body.sound,
+      text,
+      icon,
+      priority: (priority ?? "info") as Priority,
+      sound,
       lifetime: body.lifetime,
       cycles: body.cycles,
-      source: `app:${caller.name}`,
+      source,
       appId: caller.id,
       deviceId: body.device,
     });
@@ -130,23 +166,42 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const body = parsed.data;
-    const text = (body.text ?? body.message ?? "").trim();
+    let text = (body.text ?? body.message ?? "").trim();
+    let icon = body.icon;
+    let priority = body.priority;
+    let sound = body.sound;
+
+    if (body.card) {
+      const card = await getCard(body.card);
+      if (!card) {
+        return reply.code(404).send({ error: `Unknown card: ${body.card}` });
+      }
+      text = text || card.text;
+      icon = icon ?? card.icon;
+      priority = priority ?? card.priority;
+      sound = sound ?? card.sound;
+    }
+
     if (!text) {
       return reply
         .code(400)
-        .send({ error: "Provide text or message (1–256 chars)" });
+        .send({ error: "Provide text, message, or card (1–256 chars)" });
     }
 
     const event = body.event?.trim();
-    const source = event
-      ? `app:${caller.name}:${event}`
-      : `app:${caller.name}`;
+    const source = [
+      `app:${caller.name}`,
+      event,
+      body.card ? `card:${body.card}` : null,
+    ]
+      .filter(Boolean)
+      .join(":");
 
     enqueue({
       text,
-      icon: body.icon,
-      priority: (body.priority ?? "info") as Priority,
-      sound: body.sound,
+      icon,
+      priority: (priority ?? "info") as Priority,
+      sound,
       lifetime: body.lifetime,
       cycles: body.cycles,
       source,
@@ -164,7 +219,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       frame = await upsertFrame(
         channelId,
         body.frame_text ?? text,
-        body.frame_icon ?? body.icon ?? "a2867",
+        body.frame_icon ?? icon ?? "a2867",
       );
     }
 

@@ -30,13 +30,39 @@ Fields:
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `text` | string | required, max 256 |
+| `text` | string | required unless `card` is set, max 256 |
+| `card` | string | alert card slug/id from the panel (fills text/icon/priority/sound) |
 | `icon` | string | LaMetric icon id |
 | `priority` | `info` \| `warning` \| `critical` | queue ordering |
 | `sound` | boolean \| string | optional sound id |
 | `lifetime` | number | ms |
 | `cycles` | number | display cycles |
-| `device` | string | clock id or slug (`lametric`, `ulanzi`). Omit to send to every clock. |
+| `device` | string | clock id or slug (`lametric`, `ulanzi`, `ulanzi-2`, …). Omit to send to every clock. |
+
+### Alert cards
+
+Predesigned and custom alert templates live in the panel tab **Alertas**. List them:
+
+```bash
+curl "$BRIDGE/api/v1/cards" -H "X-API-Key: $API_KEY"
+```
+
+Send a card to one clock (or omit `device` for all):
+
+```bash
+curl -X POST "$BRIDGE/api/v1/notify" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $API_KEY" \
+  -d '{"card":"paquete","device":"ulanzi"}'
+```
+
+Optional overrides: `text`, `icon`, `priority`, `sound` on top of the card defaults.
+
+Built-in presets (seeded): `paquete`, `puerta`, `alarma`, `visita`, `llamada`, `reunion`, `recordatorio`, `temp-alta`, `ok`, `cena`.
+
+### Multiple Ulanzi clocks
+
+Add each AWTRIX clock in **Relojes** with a unique slug (e.g. `ulanzi`, `ulanzi-cocina`). Env only upserts the first as `ulanzi` (`AWTRIX_BASE_URL`); extras are panel-managed.
 
 ## App webhook (Sentinel / scripts)
 
@@ -58,7 +84,8 @@ curl -X POST "$BRIDGE/api/v1/webhook" \
 | Field | Type | Notes |
 | --- | --- | --- |
 | `event` | string | optional label (e.g. `torrent.added`, `torrent.completed`, `torrent.removed`, `copy.done`) |
-| `text` or `message` | string | required, max 256 |
+| `card` | string | optional alert card slug/id |
+| `text` or `message` | string | required unless `card`, max 256 |
 | `icon` / `priority` / `sound` / `lifetime` / `cycles` / `device` | — | same as `/notify` |
 | `channel` | string | optional: also upsert Indicator frame on this channel |
 | `frame_text` / `frame_icon` | string | frame content (defaults to `text` / `icon`) |
