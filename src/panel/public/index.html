@@ -120,8 +120,11 @@
                 </select>
               </label>
               <label class="check">
-                <input name="sound" type="checkbox" />
+                <input name="sound" type="checkbox" id="notifySoundCheck" />
                 Sonido
+              </label>
+              <label id="notifySoundWrap">Cuál
+                <select name="soundId" id="notifySoundSelect"></select>
               </label>
             </div>
             <div class="row">
@@ -192,8 +195,11 @@
                 </select>
               </label>
               <label class="check">
-                <input name="sound" type="checkbox" />
+                <input name="sound" type="checkbox" id="cardSoundCheck" />
                 Sonido
+              </label>
+              <label id="cardSoundWrap">Cuál
+                <select name="soundId" id="cardSoundSelect"></select>
               </label>
             </div>
             <div class="row">
@@ -208,7 +214,7 @@
         <header class="card-head">
           <h2>Automatizaciones (IF → THEN)</h2>
           <p class="hint">
-            Como IFTTT: fuente <strong>Conexiones</strong> (Sentinel) o Home Assistant → card → reloj.
+            Como IFTTT: fuente <strong>Conexiones</strong> (Sentinel / Frigate) o Home Assistant → card → reloj.
           </p>
         </header>
 
@@ -267,9 +273,21 @@
                 <option value="">Todos</option>
               </select>
             </label>
+            <label>Audio
+              <select name="sound" id="autoSoundSelect">
+                <option value="inherit">Heredar de la card</option>
+                <option value="on">Con sonido</option>
+                <option value="off" selected>Mudo</option>
+              </select>
+            </label>
+            <label id="autoSoundIdWrap">Cuál
+              <select name="soundId" id="autoSoundIdSelect">
+                <option value="">— de la card —</option>
+              </select>
+            </label>
             <button type="submit" class="btn-lime">Crear regla</button>
           </div>
-          <p class="hint">Conexiones: el app del panel debe llamarse igual (ej. <code>sentinel</code>). Vars: <code>{{ name }}</code>, <code>{{ hot_free }}</code>, <code>{{ text }}</code>, <code>{{ event }}</code>.</p>
+          <p class="hint">Conexiones: el app del panel debe llamarse igual (<code>sentinel</code>, <code>frigate</code>). Vars Sentinel: <code>{{ name }}</code>, <code>{{ hot_free }}</code>, <code>{{ text }}</code>, <code>{{ event }}</code>. Vars Frigate: <code>{{ label_es }}</code>, <code>{{ camera }}</code>, <code>{{ zone }}</code>, <code>{{ score }}</code>. Audio: heredar / forzar / mudo + sonido LaMetric.</p>
           <p class="msg" id="autoMsg"></p>
         </form>
 

@@ -44,20 +44,24 @@ import {
   getCard,
   listCards,
   publicCard,
+  resolveCardSound,
   saveCard,
 } from "../services/cards.js";
 import {
   CONNECTION_CATALOG,
   connectionTemplateVars,
   deleteAutomation,
+  frigateTemplateVars,
   getAutomation,
   haTemplateVars,
   listAutomations,
   publicAutomation,
   renderCardText,
+  resolveAutomationSound,
   saveAutomation,
   setAutomationEnabled,
 } from "../services/cardAutomations.js";
+import { LAMETRIC_SOUNDS } from "../services/sounds.js";
 import {
   deleteDevice,
   getDevice,
@@ -317,7 +321,7 @@ function registerPanelApi(app: FastifyInstance): void {
         text: z.string().min(1).max(256),
         icon: z.string().max(64).optional(),
         priority: z.enum(["info", "warning", "critical"]).optional(),
-        sound: z.boolean().optional(),
+        sound: z.union([z.boolean(), z.string()]).optional(),
         device: z.string().min(1).max(64).optional(),
       })
       .safeParse(request.body);
@@ -343,6 +347,10 @@ function registerPanelApi(app: FastifyInstance): void {
     return result;
   });
 
+  app.get("/panel/api/sounds", async () => ({
+    sounds: LAMETRIC_SOUNDS,
+  }));
+
   app.get("/panel/api/cards", async () => ({
     cards: (await listCards()).map(publicCard),
   }));
@@ -356,6 +364,7 @@ function registerPanelApi(app: FastifyInstance): void {
         icon: z.string().max(64).optional(),
         priority: z.enum(["info", "warning", "critical"]).optional(),
         sound: z.boolean().optional(),
+        soundId: z.string().max(64).nullable().optional(),
         sortOrder: z.number().int().optional(),
       })
       .safeParse(request.body);
@@ -384,6 +393,7 @@ function registerPanelApi(app: FastifyInstance): void {
         icon: z.string().max(64).optional(),
         priority: z.enum(["info", "warning", "critical"]).optional(),
         sound: z.boolean().optional(),
+        soundId: z.string().max(64).nullable().optional(),
         sortOrder: z.number().int().optional(),
       })
       .safeParse(request.body);
@@ -399,6 +409,10 @@ function registerPanelApi(app: FastifyInstance): void {
         icon: parsed.data.icon ?? existing.icon,
         priority: parsed.data.priority ?? existing.priority,
         sound: parsed.data.sound ?? existing.sound,
+        soundId:
+          parsed.data.soundId === undefined
+            ? existing.soundId
+            : parsed.data.soundId,
         sortOrder: parsed.data.sortOrder ?? existing.sortOrder,
       });
       return { card: publicCard(card) };
@@ -431,17 +445,19 @@ function registerPanelApi(app: FastifyInstance): void {
       .object({
         device: z.string().min(1).max(64).optional(),
         text: z.string().min(1).max(256).optional(),
+        sound: z.union([z.boolean(), z.string()]).optional(),
       })
       .safeParse(request.body ?? {});
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
     const text = parsed.data.text?.trim() || card.text;
+    const sound = resolveCardSound(card, parsed.data.sound);
     const result = await dispatchNotification({
       text,
       icon: card.icon,
       priority: card.priority,
-      sound: card.sound,
+      sound,
       source: `card:${card.slug}`,
       deviceId: parsed.data.device,
     });
@@ -488,6 +504,8 @@ function registerPanelApi(app: FastifyInstance): void {
         eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
         enabled: z.boolean().optional(),
+        sound: z.boolean().nullable().optional(),
+        soundId: z.string().max(64).nullable().optional(),
         trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
         triggerValue: z.string().max(128).nullable().optional(),
       })
@@ -505,6 +523,8 @@ function registerPanelApi(app: FastifyInstance): void {
         eventName: parsed.data.eventName,
         deviceId: parsed.data.deviceId ?? null,
         enabled: parsed.data.enabled,
+        sound: parsed.data.sound,
+        soundId: parsed.data.soundId,
         trigger: parsed.data.trigger,
         triggerValue: parsed.data.triggerValue,
       });
@@ -538,6 +558,8 @@ function registerPanelApi(app: FastifyInstance): void {
         eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
         enabled: z.boolean().optional(),
+        sound: z.boolean().nullable().optional(),
+        soundId: z.string().max(64).nullable().optional(),
         trigger: z.enum(["change", "equals", "gt", "lt"]).optional(),
         triggerValue: z.string().max(128).nullable().optional(),
       })
@@ -585,6 +607,14 @@ function registerPanelApi(app: FastifyInstance): void {
             ? existing.deviceId
             : parsed.data.deviceId,
         enabled: parsed.data.enabled ?? existing.enabled,
+        sound:
+          parsed.data.sound === undefined
+            ? existing.sound
+            : parsed.data.sound,
+        soundId:
+          parsed.data.soundId === undefined
+            ? existing.soundId
+            : parsed.data.soundId,
         trigger: parsed.data.trigger ?? existing.trigger,
         triggerValue:
           parsed.data.triggerValue === undefined
@@ -624,13 +654,24 @@ function registerPanelApi(app: FastifyInstance): void {
 
     let vars: Record<string, string>;
     if (auto.source === "connection") {
-      vars = connectionTemplateVars({
-        event: auto.eventName ?? "test",
-        app: auto.appName ?? "app",
-        text: "prueba Sentinel",
-        hotFree: "42G",
-        name: "Show.S01",
-      });
+      if ((auto.appName ?? "").toLowerCase() === "frigate") {
+        vars = frigateTemplateVars({
+          event: auto.eventName ?? "person",
+          label: auto.eventName === "detection" ? "person" : (auto.eventName ?? "person"),
+          camera: "entrada",
+          zones: ["porche"],
+          score: 0.91,
+          subLabel: "",
+        });
+      } else {
+        vars = connectionTemplateVars({
+          event: auto.eventName ?? "test",
+          app: auto.appName ?? "app",
+          text: "prueba Sentinel",
+          hotFree: "42G",
+          name: "Show.S01",
+        });
+      }
     } else {
       let state = "test";
       let attributes: Record<string, unknown> = {};
@@ -652,7 +693,7 @@ function registerPanelApi(app: FastifyInstance): void {
       text: text || card.text,
       icon: card.icon,
       priority: card.priority,
-      sound: card.sound,
+      sound: resolveAutomationSound(auto, card),
       source: `card-auto-test:${card.slug}`,
       deviceId: auto.deviceId ?? undefined,
     });

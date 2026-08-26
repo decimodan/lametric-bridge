@@ -19,6 +19,73 @@ function setMsg(el, text, kind = "") {
   el.className = `msg ${kind}`.trim();
 }
 
+/* LaMetric sound catalog */
+let soundCatalog = [];
+
+function soundOptionsHtml(selected = "", includeBlank = false, blankLabel = "— default —") {
+  const opts = [];
+  if (includeBlank) {
+    opts.push(
+      `<option value="" ${!selected ? "selected" : ""}>${escapeHtml(blankLabel)}</option>`,
+    );
+  }
+  const groups = [
+    { cat: "notifications", label: "Notificaciones" },
+    { cat: "alarms", label: "Alarmas" },
+  ];
+  for (const g of groups) {
+    const items = soundCatalog.filter((s) => s.category === g.cat);
+    if (!items.length) continue;
+    opts.push(`<optgroup label="${escapeHtml(g.label)}">`);
+    for (const s of items) {
+      opts.push(
+        `<option value="${escapeHtml(s.id)}" ${selected === s.id ? "selected" : ""}>${escapeHtml(s.label)}</option>`,
+      );
+    }
+    opts.push("</optgroup>");
+  }
+  return opts.join("");
+}
+
+function fillSoundSelect(sel, selected = "", includeBlank = false, blankLabel) {
+  if (!sel) return;
+  sel.innerHTML = soundOptionsHtml(selected, includeBlank, blankLabel);
+}
+
+function syncSoundWrap(checkEl, wrapEl) {
+  if (!checkEl || !wrapEl) return;
+  wrapEl.hidden = !checkEl.checked;
+}
+
+function syncAutoSoundIdWrap() {
+  const mode = $("#autoSoundSelect")?.value || "off";
+  const wrap = $("#autoSoundIdWrap");
+  if (wrap) wrap.hidden = mode === "off";
+}
+
+async function loadSoundCatalog() {
+  try {
+    const { sounds } = await api("/panel/api/sounds");
+    soundCatalog = sounds || [];
+  } catch {
+    soundCatalog = [{ id: "notification", label: "Notification", category: "notifications" }];
+  }
+  fillSoundSelect($("#notifySoundSelect"), "notification");
+  fillSoundSelect($("#cardSoundSelect"), "notification");
+  fillSoundSelect($("#autoSoundIdSelect"), "", true, "— de la card —");
+  syncSoundWrap($("#notifySoundCheck"), $("#notifySoundWrap"));
+  syncSoundWrap($("#cardSoundCheck"), $("#cardSoundWrap"));
+  syncAutoSoundIdWrap();
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /* Tabs */
 $$("#tabs button").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -242,12 +309,13 @@ async function sendNotify(payload) {
 $("#notifyForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
+  const soundOn = fd.get("sound") === "on";
   try {
     await sendNotify({
       text: String(fd.get("text") || "").trim(),
       icon: String(fd.get("icon") || "").trim() || undefined,
       priority: fd.get("priority") || "info",
-      sound: fd.get("sound") === "on",
+      sound: soundOn ? String(fd.get("soundId") || "notification") : false,
       device: fd.get("device") || undefined,
     });
   } catch (err) {
@@ -255,12 +323,19 @@ $("#notifyForm").addEventListener("submit", async (e) => {
   }
 });
 
+$("#notifySoundCheck")?.addEventListener("change", () => {
+  syncSoundWrap($("#notifySoundCheck"), $("#notifySoundWrap"));
+});
+
 $("#notifyTest").addEventListener("click", async () => {
   try {
+    const soundOn = $("#notifySoundCheck")?.checked;
     await sendNotify({
       text: "Prueba lametric-bridge",
       priority: "info",
-      sound: true,
+      sound: soundOn
+        ? String($("#notifySoundSelect")?.value || "notification")
+        : true,
       device: $("#notifyDevice").value || undefined,
     });
   } catch (err) {
@@ -296,32 +371,51 @@ async function loadCards() {
     const tile = document.createElement("article");
     tile.className = "alert-tile";
     const preset = c.isPreset ? `<span class="badge badge-preset">preset</span>` : "";
-    const sound = c.sound ? " · sonido" : "";
+    const soundLabel = c.sound
+      ? ` · ${escapeHtml(c.soundId || "notification")}`
+      : " · mudo";
     tile.innerHTML = `
       <header>
         <p class="tile-name">${escapeHtml(c.name)}</p>
-        <div>${preset}${priorityBadge(c.priority)}</div>
+        <div>${preset}${priorityBadge(c.priority)}${c.sound ? "" : `<span class="badge">mudo</span>`}</div>
       </header>
       <p class="tile-text">${escapeHtml(c.text)}</p>
-      <div class="tile-meta">${escapeHtml(c.slug)} · ${escapeHtml(c.icon)}${sound}</div>
+      <div class="tile-meta">${escapeHtml(c.slug)} · ${escapeHtml(c.icon)}${soundLabel}</div>
       <div class="tile-actions">
         <button type="button" data-send-card="${c.id}">Enviar</button>
+        <button type="button" class="secondary" data-send-card-mute="${c.id}">Mudo</button>
         <button type="button" class="secondary" data-edit-card="${c.id}">Editar</button>
         ${c.isPreset ? "" : `<button type="button" class="danger" data-del-card="${c.id}">Borrar</button>`}
       </div>`;
     grid.appendChild(tile);
   }
 
+  async function sendCard(id, soundOverride) {
+    const body = {
+      device: $("#cardDeviceSelect").value || undefined,
+    };
+    if (soundOverride !== undefined) body.sound = soundOverride;
+    const r = await api(`/panel/api/cards/${id}/send`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setMsg($("#cardMsg"), r.detail, r.ok ? "ok" : "error");
+  }
+
   grid.querySelectorAll("[data-send-card]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
-        const r = await api(`/panel/api/cards/${btn.dataset.sendCard}/send`, {
-          method: "POST",
-          body: JSON.stringify({
-            device: $("#cardDeviceSelect").value || undefined,
-          }),
-        });
-        setMsg($("#cardMsg"), r.detail, r.ok ? "ok" : "error");
+        await sendCard(btn.dataset.sendCard);
+      } catch (err) {
+        setMsg($("#cardMsg"), err.message, "error");
+      }
+    });
+  });
+
+  grid.querySelectorAll("[data-send-card-mute]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        await sendCard(btn.dataset.sendCardMute, false);
       } catch (err) {
         setMsg($("#cardMsg"), err.message, "error");
       }
@@ -339,9 +433,12 @@ async function loadCards() {
       form.icon.value = card.icon;
       form.priority.value = card.priority;
       form.sound.checked = !!card.sound;
+      fillSoundSelect($("#cardSoundSelect"), card.soundId || "notification");
+      syncSoundWrap($("#cardSoundCheck"), $("#cardSoundWrap"));
       $("#cardEditId").value = card.id;
       $("#cardSaveBtn").textContent = "Guardar";
       $("#cardCancelEdit").hidden = false;
+      form.slug.readOnly = !!card.isPreset;
       form.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
   });
@@ -403,6 +500,18 @@ async function loadConnectionCatalog() {
           { id: "torrent.completed", label: "Descarga terminada" },
           { id: "torrent.removed", label: "Tarea eliminada" },
           { id: "copy.done", label: "Copia terminada" },
+        ],
+      },
+      {
+        id: "frigate",
+        name: "Frigate",
+        events: [
+          { id: "detection", label: "Cualquier detección" },
+          { id: "person", label: "Persona" },
+          { id: "car", label: "Auto" },
+          { id: "dog", label: "Perro" },
+          { id: "cat", label: "Gato" },
+          { id: "package", label: "Paquete" },
         ],
       },
     ];
@@ -469,6 +578,7 @@ async function loadAutomations() {
           <div class="rule-if">${escapeHtml(ruleIfLabel(a))}</div>
           <div class="rule-then">ENTONCES <code>${escapeHtml(a.cardSlug || a.cardId)}</code>
             → ${escapeHtml(a.deviceName || a.deviceSlug || "todos")}
+            · ${a.soundEffective ? escapeHtml(a.soundEffectiveId || "sonido") : "mudo"}${a.sound === null || a.sound === undefined ? " (card)" : ""}
           </div>
           <div class="meta">last ${escapeHtml(String(a.lastValue ?? "—"))}${a.lastSentAt ? ` · sent ${escapeHtml(String(a.lastSentAt))}` : ""}</div>
         </div>
@@ -534,6 +644,10 @@ function syncAutoValueVisibility() {
 $("#autoTrigger").addEventListener("change", syncAutoValueVisibility);
 $("#autoSource").addEventListener("change", syncAutoSourceUI);
 $("#autoAppSelect").addEventListener("change", () => fillConnectionSelects());
+$("#autoSoundSelect")?.addEventListener("change", syncAutoSoundIdWrap);
+$("#cardSoundCheck")?.addEventListener("change", () => {
+  syncSoundWrap($("#cardSoundCheck"), $("#cardSoundWrap"));
+});
 
 $("#autoSearchBtn").addEventListener("click", async () => {
   try {
@@ -562,10 +676,14 @@ $("#autoForm").addEventListener("submit", async (e) => {
   const fd = new FormData(e.target);
   const source = String(fd.get("source") || "connection");
   const trigger = String(fd.get("trigger") || "change");
+  const soundMode = String(fd.get("sound") || "off");
+  const soundId = String(fd.get("soundId") || "").trim();
   const payload = {
     source,
     cardId: fd.get("cardId"),
     deviceId: fd.get("deviceId") || null,
+    sound: soundMode === "inherit" ? null : soundMode === "on",
+    soundId: soundMode === "off" ? null : soundId || null,
   };
   if (source === "ha") {
     payload.entityId = String(fd.get("entityId") || "").trim();
@@ -582,7 +700,10 @@ $("#autoForm").addEventListener("submit", async (e) => {
     });
     e.target.reset();
     $("#autoSource").value = "connection";
+    $("#autoSoundSelect").value = "off";
+    fillSoundSelect($("#autoSoundIdSelect"), "", true, "— de la card —");
     syncAutoSourceUI();
+    syncAutoSoundIdWrap();
     fillCardSelect();
     fillDeviceSelects();
     fillConnectionSelects();
@@ -597,6 +718,8 @@ function resetCardForm() {
   const form = $("#cardForm");
   form.reset();
   form.icon.value = "a2867";
+  fillSoundSelect($("#cardSoundSelect"), "notification");
+  syncSoundWrap($("#cardSoundCheck"), $("#cardSoundWrap"));
   $("#cardEditId").value = "";
   $("#cardSaveBtn").textContent = "Crear";
   $("#cardCancelEdit").hidden = true;
@@ -608,13 +731,15 @@ $("#cardForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = String(fd.get("id") || "").trim();
+  const soundOn = fd.get("sound") === "on";
   const payload = {
     name: String(fd.get("name") || "").trim(),
     slug: String(fd.get("slug") || "").trim().toLowerCase(),
     text: String(fd.get("text") || "").trim(),
     icon: String(fd.get("icon") || "").trim() || "a2867",
     priority: fd.get("priority") || "info",
-    sound: fd.get("sound") === "on",
+    sound: soundOn,
+    soundId: soundOn ? String(fd.get("soundId") || "notification") : null,
   };
   try {
     if (id) {
@@ -1249,15 +1374,8 @@ async function loadLogs() {
 
 $("#refreshLogs").addEventListener("click", () => loadLogs());
 
-function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 (async function init() {
+  await loadSoundCatalog();
   await refreshStatus();
   await loadDevices();
   await loadConnectionCatalog();

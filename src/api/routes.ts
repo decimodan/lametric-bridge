@@ -1,12 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { findAppByApiKey } from "../services/apps.js";
-import { getCard, listCards, publicCard } from "../services/cards.js";
+import { getCard, listCards, publicCard, resolveCardSound } from "../services/cards.js";
 import {
   connectionTemplateVars,
-  listEnabledConnectionAutomations,
-  markAutomationSent,
-  renderCardText,
+  enqueueConnectionRules,
+  frigateTemplateVars,
 } from "../services/cardAutomations.js";
 import {
   createChannel,
@@ -15,6 +14,7 @@ import {
   upsertFrame,
 } from "../services/channels.js";
 import { listDevices, publicDevice } from "../services/devices.js";
+import { parseFrigateBody } from "../services/frigate.js";
 import { checkRateLimit, enqueue, queueSize } from "../services/queue.js";
 import type { Priority } from "../services/render.js";
 
@@ -138,7 +138,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       text = text || card.text;
       icon = icon ?? card.icon;
       priority = priority ?? card.priority;
-      sound = sound ?? card.sound;
+      sound = resolveCardSound(card, body.sound);
       source = `app:${caller.name}:card:${card.slug}`;
     }
 
@@ -189,45 +189,32 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       text = text || card.text;
       icon = icon ?? card.icon;
       priority = priority ?? card.priority;
-      sound = sound ?? card.sound;
+      sound = resolveCardSound(card, body.sound);
     }
 
     const event = body.event?.trim();
     let automationHits = 0;
 
     if (event) {
-      const autos = await listEnabledConnectionAutomations(caller.name, event);
-      if (autos.length) {
-        const vars = {
-          ...connectionTemplateVars({
-            event,
-            app: caller.name,
-            text: text || event,
-            hotFree: body.hot_free,
-            name: body.name,
-          }),
-          ...(body.vars ?? {}),
-        };
-        for (const auto of autos) {
-          const card = await getCard(auto.cardId);
-          if (!card) continue;
-          const rendered = renderCardText(card, vars);
-          if (!rendered) continue;
-          enqueue({
-            text: rendered,
-            icon: card.icon,
-            priority: card.priority,
-            sound: card.sound,
-            lifetime: body.lifetime,
-            cycles: body.cycles,
-            source: `card-auto:${caller.name}:${event}:${card.slug}`,
-            appId: caller.id,
-            deviceId: auto.deviceId ?? body.device,
-          });
-          await markAutomationSent(auto.id, event);
-          automationHits += 1;
-        }
-      }
+      const vars = {
+        ...connectionTemplateVars({
+          event,
+          app: caller.name,
+          text: text || event,
+          hotFree: body.hot_free,
+          name: body.name,
+        }),
+        ...(body.vars ?? {}),
+      };
+      automationHits = await enqueueConnectionRules({
+        appName: caller.name,
+        events: [event],
+        vars,
+        appId: caller.id,
+        deviceId: body.device,
+        lifetime: body.lifetime,
+        cycles: body.cycles,
+      });
     }
 
     // If connection automations handled this event, skip default notify
@@ -284,6 +271,77 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       event: event ?? null,
       automations: automationHits,
       frame,
+    });
+  });
+
+  /**
+   * Frigate detection ingest. Accepts native MQTT `frigate/events` JSON
+   * ({ type, after }) or a flat { label, camera, zones, score } body.
+   * App name should be `frigate`. Fires Conexiones rules for `detection`
+   * and the object label (e.g. person). By default only `type=new`.
+   */
+  app.post("/api/v1/frigate", async (request, reply) => {
+    const caller = await requireApiKey(request, reply);
+    if (!caller) return;
+
+    const q = request.query as Record<string, unknown> | undefined;
+    const includeUpdates = Boolean(q && "all" in q);
+
+    const parsed = parseFrigateBody(request.body, { includeUpdates });
+    if (parsed === null) {
+      return reply.code(202).send({
+        accepted: true,
+        ignored: true,
+        reason: "skipped update/end (pass ?all=1 to include)",
+        queue: queueSize(),
+        automations: 0,
+      });
+    }
+    if ("error" in parsed) {
+      return reply.code(400).send({ error: parsed.error });
+    }
+
+    const primaryEvent = parsed.events.includes(parsed.label)
+      ? parsed.label
+      : "detection";
+    const vars = frigateTemplateVars({
+      event: primaryEvent,
+      label: parsed.label,
+      camera: parsed.camera,
+      zones: parsed.zones,
+      score: parsed.score,
+      subLabel: parsed.subLabel,
+    });
+
+    const automationHits = await enqueueConnectionRules({
+      appName: caller.name,
+      events: parsed.events,
+      vars,
+      appId: caller.id,
+    });
+
+    // No matching rules: still enqueue a short default so wiring is testable.
+    if (automationHits === 0) {
+      enqueue({
+        text: vars.text,
+        icon: "a2305",
+        priority: "warning",
+        sound: "open_door",
+        source: `frigate:${parsed.label}:${parsed.camera || "cam"}`,
+        appId: caller.id,
+      });
+    }
+
+    return reply.code(202).send({
+      accepted: true,
+      queue: queueSize(),
+      type: parsed.type,
+      label: parsed.label,
+      camera: parsed.camera,
+      zones: parsed.zones,
+      events: parsed.events,
+      automations: automationHits,
+      text: vars.text,
     });
   });
 

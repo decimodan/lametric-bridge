@@ -1,6 +1,7 @@
 import type { Device } from "../services/devices.js";
 import { touchDevice } from "../services/devices.js";
 import type { Message, Priority } from "../services/render.js";
+import { lametricSoundCategory } from "../services/sounds.js";
 import { lanFetch } from "./lanFetch.js";
 
 function authHeader(apiKey: string): string {
@@ -107,13 +108,16 @@ export async function sendToLametric(
       cycles: message.cycles ?? 2,
       ...(message.sound
         ? {
-            sound: {
-              category: "notifications",
-              id:
+            sound: (() => {
+              const id =
                 typeof message.sound === "string"
                   ? message.sound
-                  : "notification",
-            },
+                  : "notification";
+              return {
+                category: lametricSoundCategory(id),
+                id,
+              };
+            })(),
           }
         : {}),
     },

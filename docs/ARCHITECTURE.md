@@ -6,6 +6,7 @@
 
 - Apps push notifications and persistent frames via REST + API key.
 - Home Assistant state changes map to notifications or frames, targeted at a specific clock or all clocks.
+- Frigate (and other LAN apps) post detection/events via webhook or `POST /api/v1/frigate`; panel Conexiones rules map them to alert cards.
 - The bridge pushes notifications to each clock's local API and exposes `/lametric/frames` for a LaMetric Indicator App.
 - Each clock has a unique `slug` (`lametric`, `ulanzi`, …) used in the panel, HA mappings, and `POST /api/v1/notify`.
 

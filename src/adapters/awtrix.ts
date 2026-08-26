@@ -78,9 +78,11 @@ export async function sendToAwtrix(
   };
   if (message.icon) payload.icon = message.icon;
   if (message.sound) {
+    // AWTRIX expects RTTTL. LaMetric sound ids are not RTTTL — use a short beep.
+    const raw = message.sound;
     payload.soundRtttl =
-      typeof message.sound === "string"
-        ? message.sound
+      typeof raw === "string" && raw.includes(":")
+        ? raw
         : "d:d=4,o=5,b=140:c6,e6,g6";
   }
   try {
