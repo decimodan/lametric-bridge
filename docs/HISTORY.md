@@ -2,6 +2,17 @@
 
 # Decisions made
 
+## 2026-08-25 — Frigate detections + alert audio (PRODUCT-00009)
+
+- Added Frigate to Conexiones catalog (`detection`, `person`, `car`, `dog`, `cat`, `package`).
+- New ingest `POST /api/v1/frigate`: accepts native MQTT `frigate/events` JSON or flat `{ label, camera, zones }`.
+- Only `type=new` by default (pass `?all=1` for update/end) to avoid spam.
+- Template vars: `{{ label_es }}`, `{{ camera }}`, `{{ zone }}`, `{{ score }}`, `{{ sub_label }}`.
+- Seeded card `deteccion` (`{{ label_es }} en {{ camera }}`, sound `open_door`).
+- Cards and automations: sound on/off + LaMetric sound id (notifications/alarms). Automations can inherit / force / mute and override the sound.
+- Card library: **Mudo** send; panel lists sounds via `GET /panel/api/sounds`.
+- Bridge stays display-only; Frigate/MQTT/HA own the camera domain.
+
 ## 2026-08-25 — Connection automations / Sentinel (PRODUCT-00007)
 
 - Extended IFTTT rules with source **Conexiones** (app + event), starting with Sentinel.

@@ -34,7 +34,7 @@ Fields:
 | `card` | string | alert card slug/id from the panel (fills text/icon/priority/sound) |
 | `icon` | string | LaMetric icon id |
 | `priority` | `info` \| `warning` \| `critical` | queue ordering |
-| `sound` | boolean \| string | optional sound id |
+| `sound` | boolean \| string | optional; `true`/`false` or LaMetric sound id (e.g. `open_door`, `alarm1`) |
 | `lifetime` | number | ms |
 | `cycles` | number | display cycles |
 | `device` | string | clock id or slug (`lametric`, `ulanzi`, `ulanzi-2`, …). Omit to send to every clock. |
@@ -58,7 +58,7 @@ curl -X POST "$BRIDGE/api/v1/notify" \
 
 Optional overrides: `text`, `icon`, `priority`, `sound` on top of the card defaults.
 
-Built-in presets (seeded): `paquete`, `puerta`, `alarma`, `visita`, `llamada`, `reunion`, `recordatorio`, `temp-alta`, `ok`, `cena`.
+Built-in presets (seeded): `paquete`, `puerta`, `alarma`, `visita`, `deteccion`, `llamada`, `reunion`, `recordatorio`, `temp-alta`, `ok`, `cena`.
 
 ### Card automations (IFTTT)
 
@@ -70,19 +70,25 @@ SI  binary_sensor.puerta  cambia
 ENTONCES  card:puerta  EN  ulanzi-cocina
 ```
 
-**Conexiones** (LAN apps via webhook — e.g. Sentinel)
+**Conexiones** (LAN apps via webhook — e.g. Sentinel / Frigate)
 ```
 SI  Sentinel → torrent.added
 ENTONCES  card:sentinel-nueva  EN  ulanzi
 
 SI  Sentinel → torrent.completed
 ENTONCES  card:sentinel-done  EN  lametric
+
+SI  Frigate → person
+ENTONCES  card:deteccion  EN  ulanzi
 ```
 
-The panel app name must match (`sentinel`). When a connection rule matches an event, the default webhook text is skipped (no double notify).
+The panel app name must match (`sentinel`, `frigate`). When a connection rule matches an event, the default webhook text is skipped (no double notify).
 
 HA triggers: `change` | `equals` | `gt` | `lt`.  
-Card text may use `{{ state }}`, `{{ name }}`, `{{ unit }}`, and for connections also `{{ hot_free }}`, `{{ text }}`, `{{ event }}`.
+Card text may use `{{ state }}`, `{{ name }}`, `{{ unit }}`, and for connections also `{{ hot_free }}`, `{{ text }}`, `{{ event }}`.  
+Frigate cards also get `{{ label }}`, `{{ label_es }}`, `{{ camera }}`, `{{ zone }}`, `{{ zones }}`, `{{ score }}`, `{{ sub_label }}`.
+
+**Audio:** each card has sound on/off plus optional LaMetric sound id (`notification`, `open_door`, `alarm1`, …). Automations can inherit / force on / mute and optionally override the sound id. Manual send has **Enviar** (card default) and **Mudo**.
 
 ### Multiple Ulanzi clocks
 
@@ -127,6 +133,44 @@ LAMETRIC_BRIDGE_API_KEY=lb_...
 ```
 
 Sentinel posts webhook events for torrent added / download complete / removed / copy done, appending hot free space when available.
+
+### Frigate
+
+1. Create an app named `frigate` in the bridge panel; copy the API key.
+2. In **Alertas**, add a Conexiones rule, e.g. `SI Frigate → person` → card `deteccion` → clock.
+3. POST detections to `POST /api/v1/frigate` (native MQTT event JSON or flat body).
+
+Native Frigate MQTT `frigate/events` shape (only `type=new` by default; `?all=1` includes update/end):
+
+```bash
+curl -X POST "$BRIDGE/api/v1/frigate" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $FRIGATE_API_KEY" \
+  -d '{
+    "type": "new",
+    "after": {
+      "id": "1700000000.1-abc",
+      "camera": "entrada",
+      "label": "person",
+      "top_score": 0.91,
+      "current_zones": ["porche"],
+      "entered_zones": ["porche"]
+    }
+  }'
+```
+
+Flat body (scripts / HA `rest_command`):
+
+```bash
+curl -X POST "$BRIDGE/api/v1/frigate" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: $FRIGATE_API_KEY" \
+  -d '{"label":"person","camera":"entrada","zones":["porche"],"score":0.91}'
+```
+
+Each detection fires Conexiones rules for `detection` and for the object label (`person`, `car`, …). Without matching rules, the bridge still queues a short default text (`Persona en entrada`).
+
+Wire Frigate → bridge with any of: MQTT→HTTP (Node-RED / mqttwarn), HA automation on `frigate` events calling `rest_command`, or a small script subscribed to `frigate/events`.
 
 List clocks (id, slug, kind, host):
 

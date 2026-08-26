@@ -10,6 +10,7 @@ import {
   listWatchedAutomationEntityIds,
   markAutomationSent,
   renderCardText,
+  resolveAutomationSound,
   shouldFireAutomation,
   touchAutomationValue,
 } from "../services/cardAutomations.js";
@@ -405,7 +406,7 @@ async function handleCardAutomations(
       text,
       icon: card.icon,
       priority: card.priority,
-      sound: card.sound,
+      sound: resolveAutomationSound(auto, card),
       source: `card-auto:${card.slug}:${entityId}`,
       deviceId: auto.deviceId ?? undefined,
     });

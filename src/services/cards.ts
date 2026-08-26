@@ -2,6 +2,7 @@ import { v4 as uuid } from "uuid";
 import { query } from "../db/index.js";
 import type { Priority } from "./render.js";
 import { isValidSlug } from "./devices.js";
+import { normalizeSoundId } from "./sounds.js";
 
 export type AlertCard = {
   id: string;
@@ -11,6 +12,8 @@ export type AlertCard = {
   icon: string;
   priority: Priority;
   sound: boolean;
+  /** LaMetric sound id when sound is enabled; null = default "notification". */
+  soundId: string | null;
   isPreset: boolean;
   sortOrder: number;
   createdAt: string | Date;
@@ -24,6 +27,7 @@ type AlertCardRow = {
   icon: string;
   priority: Priority;
   sound: boolean;
+  sound_id: string | null;
   is_preset: boolean;
   sort_order: number;
   created_at: string | Date;
@@ -38,6 +42,7 @@ function toCard(row: AlertCardRow): AlertCard {
     icon: row.icon,
     priority: row.priority,
     sound: row.sound,
+    soundId: row.sound_id ?? null,
     isPreset: row.is_preset,
     sortOrder: row.sort_order,
     createdAt: row.created_at,
@@ -53,10 +58,26 @@ export function publicCard(card: AlertCard) {
     icon: card.icon,
     priority: card.priority,
     sound: card.sound,
+    soundId: card.soundId,
     isPreset: card.isPreset,
     sortOrder: card.sortOrder,
     createdAt: card.createdAt,
   };
+}
+
+/** Effective Message.sound for a card (false | true | sound id string). */
+export function resolveCardSound(
+  card: Pick<AlertCard, "sound" | "soundId">,
+  override?: boolean | string,
+): boolean | string {
+  if (override === false) return false;
+  if (typeof override === "string") {
+    const id = override.trim();
+    return id || true;
+  }
+  if (override === true) return card.soundId?.trim() || true;
+  if (!card.sound) return false;
+  return card.soundId?.trim() || true;
 }
 
 export async function listCards(): Promise<AlertCard[]> {
@@ -83,6 +104,7 @@ export async function saveCard(input: {
   icon?: string;
   priority?: Priority;
   sound?: boolean;
+  soundId?: string | null;
   sortOrder?: number;
 }): Promise<AlertCard> {
   const slug = input.slug.trim().toLowerCase();
@@ -102,11 +124,16 @@ export async function saveCard(input: {
 
   const id = existing?.id ?? uuid();
   const isPreset = existing?.isPreset ?? false;
+  const sound = input.sound ?? existing?.sound ?? false;
+  const soundId =
+    input.soundId === undefined
+      ? (existing?.soundId ?? null)
+      : normalizeSoundId(input.soundId);
 
   await query(
     `INSERT INTO alert_cards
-       (id, slug, name, text, icon, priority, sound, is_preset, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (id, slug, name, text, icon, priority, sound, sound_id, is_preset, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      ON CONFLICT (id) DO UPDATE SET
        slug = EXCLUDED.slug,
        name = EXCLUDED.name,
@@ -114,6 +141,7 @@ export async function saveCard(input: {
        icon = EXCLUDED.icon,
        priority = EXCLUDED.priority,
        sound = EXCLUDED.sound,
+       sound_id = EXCLUDED.sound_id,
        sort_order = EXCLUDED.sort_order`,
     [
       id,
@@ -122,7 +150,8 @@ export async function saveCard(input: {
       input.text.trim(),
       (input.icon ?? existing?.icon ?? "a2867").trim() || "a2867",
       input.priority ?? existing?.priority ?? "info",
-      input.sound ?? existing?.sound ?? false,
+      sound,
+      sound ? soundId : null,
       isPreset,
       input.sortOrder ?? existing?.sortOrder ?? 0,
     ],

@@ -2,7 +2,9 @@ import { v4 as uuid } from "uuid";
 import { query } from "../db/index.js";
 import { getDevice } from "./devices.js";
 import { getCard, type AlertCard } from "./cards.js";
+import { enqueue } from "./queue.js";
 import { renderTemplate, type Priority } from "./render.js";
+import { normalizeSoundId } from "./sounds.js";
 
 export type AutomationSource = "ha" | "connection";
 export type AutomationTrigger = "change" | "equals" | "gt" | "lt";
@@ -17,6 +19,10 @@ export type CardAutomation = {
   eventName: string | null;
   deviceId: string | null;
   enabled: boolean;
+  /** null = inherit from card; true/false = force on/off (mute). */
+  sound: boolean | null;
+  /** Override LaMetric sound id; null = inherit from card when sounding. */
+  soundId: string | null;
   trigger: AutomationTrigger;
   triggerValue: string | null;
   lastValue: string | null;
@@ -34,6 +40,8 @@ type CardAutomationRow = {
   event_name: string | null;
   device_id: string | null;
   enabled: boolean;
+  sound: boolean | null;
+  sound_id: string | null;
   trigger: AutomationTrigger;
   trigger_value: string | null;
   last_value: string | null;
@@ -53,7 +61,33 @@ export const CONNECTION_CATALOG = [
       { id: "copy.done", label: "Copia terminada" },
     ],
   },
+  {
+    id: "frigate",
+    name: "Frigate",
+    events: [
+      { id: "detection", label: "Cualquier detección" },
+      { id: "person", label: "Persona" },
+      { id: "car", label: "Auto" },
+      { id: "dog", label: "Perro" },
+      { id: "cat", label: "Gato" },
+      { id: "package", label: "Paquete" },
+    ],
+  },
 ] as const;
+
+/** Friendly Spanish labels for common Frigate objects. */
+export const FRIGATE_LABEL_ES: Record<string, string> = {
+  person: "Persona",
+  car: "Auto",
+  truck: "Camion",
+  bus: "Colectivo",
+  motorcycle: "Moto",
+  bicycle: "Bici",
+  dog: "Perro",
+  cat: "Gato",
+  bird: "Ave",
+  package: "Paquete",
+};
 
 function toAutomation(row: CardAutomationRow): CardAutomation {
   return {
@@ -66,12 +100,25 @@ function toAutomation(row: CardAutomationRow): CardAutomation {
     eventName: row.event_name,
     deviceId: row.device_id,
     enabled: row.enabled,
+    sound: row.sound ?? null,
+    soundId: row.sound_id ?? null,
     trigger: row.trigger,
     triggerValue: row.trigger_value,
     lastValue: row.last_value,
     lastSentAt: row.last_sent_at,
     createdAt: row.created_at,
   };
+}
+
+/** Resolve effective sound: automation override wins, else card default. */
+export function resolveAutomationSound(
+  auto: Pick<CardAutomation, "sound" | "soundId">,
+  card: Pick<AlertCard, "sound" | "soundId">,
+): boolean | string {
+  const enabled =
+    auto.sound === null || auto.sound === undefined ? card.sound : auto.sound;
+  if (!enabled) return false;
+  return auto.soundId?.trim() || card.soundId?.trim() || true;
 }
 
 export function publicAutomation(
@@ -82,6 +129,9 @@ export function publicAutomation(
     deviceSlug?: string | null;
   },
 ) {
+  const soundEffective = extras?.card
+    ? resolveAutomationSound(auto, extras.card)
+    : auto.sound;
   return {
     id: auto.id,
     name: auto.name,
@@ -92,6 +142,11 @@ export function publicAutomation(
     eventName: auto.eventName,
     deviceId: auto.deviceId,
     enabled: auto.enabled,
+    sound: auto.sound,
+    soundId: auto.soundId,
+    soundEffective: Boolean(soundEffective),
+    soundEffectiveId:
+      typeof soundEffective === "string" ? soundEffective : null,
     trigger: auto.trigger,
     triggerValue: auto.triggerValue,
     lastValue: auto.lastValue,
@@ -169,6 +224,9 @@ export async function saveAutomation(input: {
   eventName?: string | null;
   deviceId?: string | null;
   enabled?: boolean;
+  /** null = inherit from card; true/false = force. Pass undefined to keep existing. */
+  sound?: boolean | null;
+  soundId?: string | null;
   trigger?: AutomationTrigger;
   triggerValue?: string | null;
 }): Promise<CardAutomation> {
@@ -219,6 +277,13 @@ export async function saveAutomation(input: {
     deviceId = device.id;
   }
 
+  const sound =
+    input.sound === undefined ? (existing?.sound ?? null) : input.sound;
+  const soundId =
+    input.soundId === undefined
+      ? (existing?.soundId ?? null)
+      : normalizeSoundId(input.soundId);
+
   const id = existing?.id ?? uuid();
   const defaultName =
     source === "ha"
@@ -229,8 +294,8 @@ export async function saveAutomation(input: {
   await query(
     `INSERT INTO card_automations
        (id, name, source, card_id, entity_id, app_name, event_name,
-        device_id, enabled, trigger, trigger_value)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        device_id, enabled, sound, sound_id, trigger, trigger_value)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name,
        source = EXCLUDED.source,
@@ -240,6 +305,8 @@ export async function saveAutomation(input: {
        event_name = EXCLUDED.event_name,
        device_id = EXCLUDED.device_id,
        enabled = EXCLUDED.enabled,
+       sound = EXCLUDED.sound,
+       sound_id = EXCLUDED.sound_id,
        trigger = EXCLUDED.trigger,
        trigger_value = EXCLUDED.trigger_value`,
     [
@@ -252,6 +319,8 @@ export async function saveAutomation(input: {
       eventName,
       deviceId,
       input.enabled ?? existing?.enabled ?? true,
+      sound,
+      sound === false ? null : soundId,
       trigger,
       triggerValue,
     ],
@@ -368,6 +437,95 @@ export function connectionTemplateVars(input: {
   };
 }
 
+export function frigateTemplateVars(input: {
+  event: string;
+  label: string;
+  camera: string;
+  zones?: string[];
+  score?: number | null;
+  subLabel?: string;
+  text?: string;
+}): Record<string, string> {
+  const label = (input.label || "object").trim().toLowerCase() || "object";
+  const camera = (input.camera || "").trim();
+  const zones = (input.zones ?? []).map((z) => String(z).trim()).filter(Boolean);
+  const zone = zones[0] ?? "";
+  const zonesStr = zones.join(", ");
+  const labelEs = FRIGATE_LABEL_ES[label] ?? label;
+  const subLabel = (input.subLabel ?? "").trim();
+  const place = zone || camera || "camara";
+  const text =
+    (input.text ?? "").trim() ||
+    (subLabel
+      ? `${subLabel} en ${place}`
+      : `${labelEs} en ${place}`);
+  const scorePct =
+    input.score != null && Number.isFinite(input.score)
+      ? String(Math.round(Math.min(1, Math.max(0, input.score)) * 100))
+      : "";
+
+  return {
+    ...connectionTemplateVars({
+      event: input.event,
+      app: "frigate",
+      text,
+      name: subLabel || camera || labelEs,
+    }),
+    label,
+    label_es: labelEs,
+    camera,
+    zones: zonesStr,
+    zone,
+    score: scorePct,
+    sub_label: subLabel,
+  };
+}
+
+/** Enqueue matching connection automations for one or more events (deduped by rule id). */
+export async function enqueueConnectionRules(opts: {
+  appName: string;
+  events: string[];
+  vars: Record<string, string>;
+  appId?: string;
+  deviceId?: string;
+  lifetime?: number;
+  cycles?: number;
+  /** Extra source tag after app:event (e.g. card slug is added per rule). */
+}): Promise<number> {
+  const seen = new Set<string>();
+  let hits = 0;
+
+  for (const event of opts.events) {
+    const ev = event.trim();
+    if (!ev) continue;
+    const autos = await listEnabledConnectionAutomations(opts.appName, ev);
+    for (const auto of autos) {
+      if (seen.has(auto.id)) continue;
+      seen.add(auto.id);
+      const card = await getCard(auto.cardId);
+      if (!card) continue;
+      const vars = { ...opts.vars, event: ev };
+      const rendered = renderCardText(card, vars);
+      if (!rendered) continue;
+      enqueue({
+        text: rendered,
+        icon: card.icon,
+        priority: card.priority,
+        sound: resolveAutomationSound(auto, card),
+        lifetime: opts.lifetime,
+        cycles: opts.cycles,
+        source: `card-auto:${opts.appName}:${ev}:${card.slug}`,
+        appId: opts.appId,
+        deviceId: auto.deviceId ?? opts.deviceId,
+      });
+      await markAutomationSent(auto.id, ev);
+      hits += 1;
+    }
+  }
+
+  return hits;
+}
+
 export async function markAutomationSent(
   id: string,
   value: string,
@@ -394,7 +552,7 @@ export type FiredCardMessage = {
   text: string;
   icon: string;
   priority: Priority;
-  sound: boolean;
+  sound: boolean | string;
   source: string;
   deviceId?: string;
   automationId: string;
