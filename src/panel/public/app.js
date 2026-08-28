@@ -95,6 +95,9 @@ $$("#tabs button").forEach((btn) => {
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "device") {
       loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
+      startGaugePolling();
+    } else {
+      stopGaugePolling();
     }
     if (btn.dataset.tab === "cards") {
       loadCards().catch((e) => setMsg($("#cardMsg"), e.message, "error"));
@@ -143,6 +146,220 @@ async function refreshStatus() {
 }
 
 let cachedDevices = [];
+let gaugePollTimer = null;
+
+const GAUGE_GRADIENTS = [
+  { from: "#60a5fa", to: "#a78bfa", glow: "rgba(96, 165, 250, 0.55)" },
+  { from: "#a855f7", to: "#ec4899", glow: "rgba(168, 85, 247, 0.55)" },
+  { from: "#f472b6", to: "#fb923c", glow: "rgba(244, 114, 182, 0.5)" },
+];
+
+const GAUGE_SLOTS = 3;
+const GAUGE_RADIUS = 70;
+const GAUGE_CIRC = 2 * Math.PI * GAUGE_RADIUS;
+
+function gaugeIconSvg(kind) {
+  if (kind === "awtrix") {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2"/>
+      <circle cx="8" cy="10" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="10" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="16" cy="10" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="8" cy="14" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="12" cy="14" r="1" fill="currentColor" stroke="none"/>
+      <circle cx="16" cy="14" r="1" fill="currentColor" stroke="none"/>
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+    <rect x="4" y="3" width="16" height="18" rx="2"/>
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 8V6M12 18v-2M8 12H6M18 12h-2"/>
+  </svg>`;
+}
+
+function gaugeProgressOffset(percent) {
+  const p = Math.max(0, Math.min(100, Number(percent) || 0));
+  return GAUGE_CIRC * (1 - p / 100);
+}
+
+function gaugeStateLabel(status) {
+  if (!status?.ok) return { state: "off", text: "Sin conexión" };
+  if (status.power === false) return { state: "warn", text: "Apagado" };
+  return { state: "on", text: "En línea" };
+}
+
+function buildClockGauge(index, device, status) {
+  const grad = GAUGE_GRADIENTS[index % GAUGE_GRADIENTS.length];
+  const gradId = `gaugeGrad${index}`;
+  const article = document.createElement("article");
+  article.className = "clock-gauge";
+  article.style.setProperty("--gauge-glow", grad.glow);
+
+  if (!device) {
+    article.classList.add("clock-gauge--empty");
+    article.innerHTML = `
+      <p class="clock-gauge-label">Reloj ${index + 1}</p>
+      <div class="clock-gauge-ring">
+        <svg viewBox="0 0 160 160" aria-hidden="true">
+          <circle class="clock-gauge-track" cx="80" cy="80" r="${GAUGE_RADIUS}" />
+        </svg>
+        <div class="clock-gauge-center">
+          <span class="clock-gauge-icon">${gaugeIconSvg("lametric")}</span>
+          <span class="clock-gauge-value">—</span>
+          <span class="clock-gauge-unit">vacío</span>
+        </div>
+      </div>
+      <p class="clock-gauge-meta">Sin configurar</p>`;
+    return article;
+  }
+
+  const brightness =
+    status?.ok && typeof status.brightness === "number" ? status.brightness : null;
+  const { state, text: stateText } = gaugeStateLabel(status);
+  const kindLabel = device.kind === "awtrix" ? "Ulanzi" : "LaMetric";
+  const autoLabel = status?.autoBrightness ? " · auto" : "";
+  const offset = gaugeProgressOffset(brightness ?? 0);
+
+  article.dataset.deviceId = device.id;
+  article.innerHTML = `
+    <p class="clock-gauge-label">${escapeHtml(device.name)}</p>
+    <div class="clock-gauge-ring">
+      <svg viewBox="0 0 160 160" aria-hidden="true">
+        <defs>
+          <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="${grad.from}" />
+            <stop offset="100%" stop-color="${grad.to}" />
+          </linearGradient>
+        </defs>
+        <circle class="clock-gauge-track" cx="80" cy="80" r="${GAUGE_RADIUS}" />
+        <circle
+          class="clock-gauge-progress"
+          cx="80" cy="80" r="${GAUGE_RADIUS}"
+          stroke="url(#${gradId})"
+          stroke-dasharray="${GAUGE_CIRC.toFixed(2)}"
+          stroke-dashoffset="${offset.toFixed(2)}"
+          data-gauge-progress="${device.id}"
+        />
+      </svg>
+      <div class="clock-gauge-center">
+        <span class="clock-gauge-icon">${gaugeIconSvg(device.kind)}</span>
+        <span class="clock-gauge-value" data-gauge-value="${device.id}">${brightness ?? "—"}</span>
+        <span class="clock-gauge-unit">brillo</span>
+      </div>
+    </div>
+    <p class="clock-gauge-meta" data-gauge-meta="${device.id}">
+      <span class="clock-gauge-status">
+        <span class="clock-gauge-dot" data-state="${state}"></span>
+        <strong>${escapeHtml(stateText)}</strong>
+      </span>
+      · ${escapeHtml(kindLabel)}${autoLabel}
+      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}</span>
+    </p>
+    <div class="clock-gauge-actions">
+      <button type="button" class="secondary" data-gauge-test="${device.id}">Probar</button>
+      <button type="button" data-gauge-identify="${device.id}">Identificar</button>
+    </div>`;
+  return article;
+}
+
+function updateGaugeStatus(deviceId, status) {
+  const progress = document.querySelector(`[data-gauge-progress="${deviceId}"]`);
+  const valueEl = document.querySelector(`[data-gauge-value="${deviceId}"]`);
+  const metaEl = document.querySelector(`[data-gauge-meta="${deviceId}"]`);
+  if (!progress && !valueEl) return;
+
+  const device = cachedDevices.find((d) => d.id === deviceId);
+  if (!device) return;
+
+  const brightness =
+    status?.ok && typeof status.brightness === "number" ? status.brightness : null;
+  const { state, text: stateText } = gaugeStateLabel(status);
+  const kindLabel = device.kind === "awtrix" ? "Ulanzi" : "LaMetric";
+  const autoLabel = status?.autoBrightness ? " · auto" : "";
+
+  if (progress && brightness != null) {
+    progress.setAttribute("stroke-dashoffset", gaugeProgressOffset(brightness).toFixed(2));
+  }
+  if (valueEl) valueEl.textContent = brightness ?? "—";
+  if (metaEl) {
+    metaEl.innerHTML = `
+      <span class="clock-gauge-status">
+        <span class="clock-gauge-dot" data-state="${state}"></span>
+        <strong>${escapeHtml(stateText)}</strong>
+      </span>
+      · ${escapeHtml(kindLabel)}${autoLabel}
+      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}</span>`;
+  }
+}
+
+function bindGaugeActions(container) {
+  container.querySelectorAll("[data-gauge-test]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/devices/${btn.dataset.gaugeTest}/test`, {
+          method: "POST",
+          body: "{}",
+        });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-gauge-identify]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/devices/${btn.dataset.gaugeIdentify}/identify`, {
+          method: "POST",
+          body: "{}",
+        });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+}
+
+async function refreshClockGauges() {
+  const container = $("#clockGauges");
+  if (!container) return;
+
+  container.innerHTML = "";
+  for (let i = 0; i < GAUGE_SLOTS; i++) {
+    const device = cachedDevices[i] || null;
+    let status = null;
+    if (device) {
+      try {
+        status = await api(`/panel/api/devices/${device.id}/status`);
+      } catch {
+        status = { ok: false };
+      }
+    }
+    container.appendChild(buildClockGauge(i, device, status));
+  }
+  bindGaugeActions(container);
+}
+
+function startGaugePolling() {
+  stopGaugePolling();
+  gaugePollTimer = setInterval(() => {
+    if (!$("#tab-device")?.classList.contains("active")) return;
+    for (const d of cachedDevices.slice(0, GAUGE_SLOTS)) {
+      api(`/panel/api/devices/${d.id}/status`)
+        .then((status) => updateGaugeStatus(d.id, status))
+        .catch(() => updateGaugeStatus(d.id, { ok: false }));
+    }
+  }, 15000);
+}
+
+function stopGaugePolling() {
+  if (gaugePollTimer) {
+    clearInterval(gaugePollTimer);
+    gaugePollTimer = null;
+  }
+}
 
 function deviceOptions(selected = "", includeAll = true) {
   const all = includeAll ? `<option value="" ${selected === "" ? "selected" : ""}>Todos</option>` : "";
@@ -162,6 +379,7 @@ async function loadDevices() {
   const { devices } = await api("/panel/api/devices");
   cachedDevices = devices || [];
   fillDeviceSelects();
+  await refreshClockGauges();
   const list = $("#deviceList");
   list.innerHTML = "";
   if (!cachedDevices.length) {
@@ -254,6 +472,7 @@ async function loadDevices() {
           }),
         });
         setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+        loadDeviceStatus(id).catch(() => {});
       } catch (err) {
         setMsg($("#deviceMsg"), err.message, "error");
       }
@@ -263,6 +482,7 @@ async function loadDevices() {
 
 async function loadDeviceStatus(id) {
   const r = await api(`/panel/api/devices/${id}/status`);
+  updateGaugeStatus(id, r);
   if (!r.ok) return;
   const range = document.querySelector(`[data-bright-range="${id}"]`);
   const label = document.querySelector(`[data-bright-val="${id}"]`);
@@ -1378,6 +1598,7 @@ $("#refreshLogs").addEventListener("click", () => loadLogs());
   await loadSoundCatalog();
   await refreshStatus();
   await loadDevices();
+  startGaugePolling();
   await loadConnectionCatalog();
   await loadCards();
   await loadAutomations();

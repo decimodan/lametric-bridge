@@ -168,9 +168,205 @@ button.btn-lime {
 }
 
 main {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0.75rem 1.25rem 2.5rem;
+}
+
+/* Clock dashboard — circular gauges (home) */
+.clock-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.clock-gauge {
+  background: linear-gradient(165deg, #1e1830 0%, #0f0f14 65%);
+  border-radius: var(--radius);
+  padding: 1.35rem 1.25rem 1.15rem;
+  text-align: center;
+  position: relative;
+  box-shadow:
+    inset 0 0 0 1px rgba(168, 85, 247, 0.18),
+    0 12px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 17rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.clock-gauge:hover:not(.clock-gauge--empty) {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 0 0 1px rgba(168, 85, 247, 0.32),
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    0 0 32px rgba(168, 85, 247, 0.08);
+}
+
+.clock-gauge--empty {
+  opacity: 0.55;
+  border: 1px dashed rgba(168, 85, 247, 0.22);
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+}
+
+.clock-gauge-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: flex-start;
+}
+
+.clock-gauge--empty .clock-gauge-label {
+  align-self: center;
+}
+
+.clock-gauge-ring {
+  position: relative;
+  width: 9.5rem;
+  height: 9.5rem;
+  flex-shrink: 0;
+}
+
+.clock-gauge-ring svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.clock-gauge-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 7;
+}
+
+.clock-gauge-progress {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  filter: drop-shadow(0 0 6px var(--gauge-glow, rgba(168, 85, 247, 0.5)));
+}
+
+.clock-gauge-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  pointer-events: none;
+}
+
+.clock-gauge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-bottom: 0.15rem;
+  opacity: 0.75;
+}
+
+.clock-gauge-icon svg {
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+
+.clock-gauge-value {
+  font-size: 2.15rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--text);
+}
+
+.clock-gauge-unit {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 0.1rem;
+}
+
+.clock-gauge-meta {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.35;
+  min-height: 2.2rem;
+}
+
+.clock-gauge-meta strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.clock-gauge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.clock-gauge-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  flex-shrink: 0;
+}
+
+.clock-gauge-dot[data-state="on"] {
+  background: var(--neon);
+  box-shadow: 0 0 8px var(--neon-glow);
+}
+
+.clock-gauge-dot[data-state="warn"] {
+  background: #ffb020;
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.5);
+}
+
+.clock-gauge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin-top: auto;
+  padding-top: 0.25rem;
+}
+
+.clock-gauge-actions button {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .clock-gauges {
+    grid-template-columns: 1fr;
+    max-width: 22rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1100px) {
+  .clock-gauge-value {
+    font-size: 1.85rem;
+  }
+  .clock-gauge-ring {
+    width: 8.5rem;
+    height: 8.5rem;
+  }
 }
 
 .panel { display: none; }
