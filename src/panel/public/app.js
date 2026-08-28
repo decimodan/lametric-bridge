@@ -253,7 +253,7 @@ function buildClockGauge(index, device, status) {
         <strong>${escapeHtml(stateText)}</strong>
       </span>
       · ${escapeHtml(kindLabel)}${autoLabel}
-      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}</span>
+      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}${device.macAddress ? ` · ${escapeHtml(device.macAddress)}` : ""}</span>
     </p>
     <div class="clock-gauge-actions">
       <button type="button" class="secondary" data-gauge-test="${device.id}">Probar</button>
@@ -288,7 +288,7 @@ function updateGaugeStatus(deviceId, status) {
         <strong>${escapeHtml(stateText)}</strong>
       </span>
       · ${escapeHtml(kindLabel)}${autoLabel}
-      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}</span>`;
+      <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}${device.macAddress ? ` · ${escapeHtml(device.macAddress)}` : ""}</span>`;
   }
 }
 
@@ -393,18 +393,29 @@ async function loadDevices() {
     const li = document.createElement("li");
     const kindLabel = d.kind === "awtrix" ? "Ulanzi / AWTRIX" : "LaMetric";
     const env = d.envManaged ? `<span class="badge">env</span>` : "";
+    const macLine = d.macAddress
+      ? `<div class="meta">MAC <code>${escapeHtml(d.macAddress)}</code></div>`
+      : "";
     li.innerHTML = `
       <div class="device-card-top">
         <div>
           <strong>${escapeHtml(d.name)}</strong> ${env}
           <div class="meta">${escapeHtml(kindLabel)} · slug <code>${escapeHtml(d.slug)}</code> · ${escapeHtml(d.host)}</div>
+          ${macLine}
         </div>
         <div class="device-actions">
+          <button type="button" class="secondary" data-resolve="${d.id}" ${d.macAddress ? "" : "disabled"}>Resolver MAC</button>
           <button type="button" class="secondary" data-test="${d.id}">Probar</button>
           <button type="button" data-identify="${d.id}">Identificar</button>
           ${d.envManaged ? "" : `<button type="button" class="danger" data-del-dev="${d.id}">Borrar</button>`}
         </div>
       </div>
+      <form class="device-mac" data-mac-form="${d.id}">
+        <label>MAC
+          <input name="macAddress" value="${escapeHtml(d.macAddress || "")}" placeholder="aa:bb:cc:dd:ee:ff" />
+        </label>
+        <button type="submit" class="secondary">Guardar MAC</button>
+      </form>
       <form class="brightness" data-bright="${d.id}">
         <label>Brillo <span data-bright-val="${d.id}">—</span>%
           <input type="range" min="0" max="100" value="50" data-bright-range="${d.id}" />
@@ -418,6 +429,42 @@ async function loadDevices() {
     list.appendChild(li);
     loadDeviceStatus(d.id).catch(() => {});
   }
+
+  list.querySelectorAll("[data-resolve]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      try {
+        const r = await api(`/panel/api/devices/${btn.dataset.resolve}/resolve`, {
+          method: "POST",
+          body: "{}",
+        });
+        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+        if (r.ok) {
+          await loadDevices();
+          refreshStatus();
+        }
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("form.device-mac").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = form.dataset.macForm;
+      const mac = new FormData(form).get("macAddress");
+      try {
+        await api(`/panel/api/devices/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ macAddress: String(mac || "").trim() || null }),
+        });
+        setMsg($("#deviceMsg"), "MAC guardada", "ok");
+        await loadDevices();
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
 
   list.querySelectorAll("[data-test]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -505,11 +552,27 @@ $("#deviceForm").addEventListener("submit", async (e) => {
         slug: String(fd.get("slug") || "").trim().toLowerCase(),
         kind: fd.get("kind"),
         host: fd.get("host"),
+        macAddress: fd.get("macAddress") || undefined,
         apiKey: fd.get("apiKey") || undefined,
       }),
     });
     e.target.reset();
     setMsg($("#deviceMsg"), "Reloj agregado", "ok");
+    await loadDevices();
+    refreshStatus();
+  } catch (err) {
+    setMsg($("#deviceMsg"), err.message, "error");
+  }
+});
+
+$("#refreshDeviceHosts")?.addEventListener("click", async () => {
+  try {
+    const r = await api("/panel/api/devices/refresh-hosts", { method: "POST", body: "{}" });
+    const lines = (r.devices || [])
+      .filter((d) => d.resolved)
+      .map((d) => `${d.slug} → ${d.host}`)
+      .join(", ");
+    setMsg($("#deviceMsg"), lines || "Sin cambios (revisá que tengan MAC)", lines ? "ok" : "");
     await loadDevices();
     refreshStatus();
   } catch (err) {

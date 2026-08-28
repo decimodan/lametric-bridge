@@ -895,6 +895,24 @@ code {
   border-top: 1px solid rgba(168, 85, 247, 0.16);
 }
 
+.device-mac {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: flex-end;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(168, 85, 247, 0.16);
+}
+
+.device-mac label {
+  flex: 1;
+  min-width: 12rem;
+}
+
+.device-mac input {
+  font-family: var(--mono);
+}
+
 .brightness input[type="range"] {
   width: 100%;
   accent-color: var(--neon);

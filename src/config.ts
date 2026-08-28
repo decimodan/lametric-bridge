@@ -25,6 +25,11 @@ export const config = {
     process.env.AWTRIX_BASE_URL?.trim() || "http://192.168.50.98",
   awtrixUser: process.env.AWTRIX_USER?.trim() || "",
   awtrixPass: process.env.AWTRIX_PASS?.trim() || "",
+  /** Optional MAC bindings — IP is resolved on the LAN when set. */
+  lametricDeviceMac: process.env.LAMETRIC_DEVICE_MAC?.trim() || "",
+  awtrixMac: process.env.AWTRIX_MAC?.trim() || "",
+  /** Subnet scanned when a MAC is not in the ARP/neighbor table (/24 only). */
+  lanSubnet: process.env.LAN_SUBNET?.trim() || "192.168.50.0/24",
   rateLimitPerMinute: Number(process.env.RATE_LIMIT_PER_MINUTE ?? "60"),
   queueIntervalMs: Number(process.env.QUEUE_INTERVAL_MS ?? "400"),
   migrationsDir: path.resolve(

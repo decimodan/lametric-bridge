@@ -67,7 +67,10 @@ import {
   getDevice,
   listDevices,
   publicDevice,
+  refreshAllDeviceHosts,
+  resolveDeviceByMac,
   saveDevice,
+  updateDeviceMac,
 } from "../services/devices.js";
 import {
   clearQueue,
@@ -169,6 +172,7 @@ function registerPanelApi(app: FastifyInstance): void {
         name: z.string().min(1).max(64),
         kind: z.enum(["lametric", "awtrix"]),
         host: z.string().min(1),
+        macAddress: z.string().max(32).optional(),
         apiKey: z.string().optional(),
       })
       .safeParse(request.body);
@@ -177,7 +181,11 @@ function registerPanelApi(app: FastifyInstance): void {
     }
     try {
       const device = await saveDevice(parsed.data);
-      return { device: publicDevice(device) };
+      if (device.macAddress) {
+        await resolveDeviceByMac(device.id).catch(() => {});
+      }
+      const refreshed = (await getDevice(device.id)) ?? device;
+      return { device: publicDevice(refreshed) };
     } catch (err) {
       return reply.code(409).send({
         error: err instanceof Error ? err.message : String(err),
@@ -194,6 +202,7 @@ function registerPanelApi(app: FastifyInstance): void {
         slug: z.string().min(1).max(32).optional(),
         name: z.string().min(1).max(64).optional(),
         host: z.string().min(1).optional(),
+        macAddress: z.string().max(32).nullable().optional(),
         apiKey: z.string().optional(),
       })
       .safeParse(request.body);
@@ -201,20 +210,64 @@ function registerPanelApi(app: FastifyInstance): void {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
     try {
+      if (existing.envManaged) {
+        if (
+          parsed.data.slug !== undefined ||
+          parsed.data.name !== undefined ||
+          parsed.data.host !== undefined ||
+          parsed.data.apiKey !== undefined
+        ) {
+          return reply.code(409).send({
+            error: `${existing.name} is managed via environment variables`,
+          });
+        }
+        if (parsed.data.macAddress !== undefined) {
+          const updated = await updateDeviceMac(id, parsed.data.macAddress);
+          if (!updated) return reply.code(404).send({ error: "Not found" });
+          if (updated.macAddress) {
+            await resolveDeviceByMac(updated.id).catch(() => {});
+          }
+          const refreshed = (await getDevice(updated.id)) ?? updated;
+          return { device: publicDevice(refreshed) };
+        }
+        return { device: publicDevice(existing) };
+      }
+
       const device = await saveDevice({
         id: existing.id,
         slug: parsed.data.slug ?? existing.slug,
         name: parsed.data.name ?? existing.name,
         kind: existing.kind,
         host: parsed.data.host ?? existing.host,
+        macAddress:
+          parsed.data.macAddress !== undefined
+            ? parsed.data.macAddress
+            : existing.macAddress,
         apiKey: parsed.data.apiKey,
       });
-      return { device: publicDevice(device) };
+      if (device.macAddress) {
+        await resolveDeviceByMac(device.id).catch(() => {});
+      }
+      const refreshed = (await getDevice(device.id)) ?? device;
+      return { device: publicDevice(refreshed) };
     } catch (err) {
       return reply.code(409).send({
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  });
+
+  app.post("/panel/api/devices/refresh-hosts", async () => ({
+    devices: await refreshAllDeviceHosts(),
+  }));
+
+  app.post("/panel/api/devices/:id/resolve", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const result = await resolveDeviceByMac(id);
+    if (!result.ok && result.detail === "Device not found") {
+      return reply.code(404).send(result);
+    }
+    return result;
   });
 
   app.delete("/panel/api/devices/:id", async (request, reply) => {

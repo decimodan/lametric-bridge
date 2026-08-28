@@ -1,5 +1,9 @@
 import type { Device } from "../services/devices.js";
-import { getDevice, resolveDevices } from "../services/devices.js";
+import {
+  getResolvedDevice,
+  resolveDevices,
+  touchDevice,
+} from "../services/devices.js";
 import type { Message } from "../services/render.js";
 import {
   getAwtrixStatus,
@@ -59,7 +63,7 @@ export async function sendToDevice(
 export async function testDevice(
   idOrSlug: string,
 ): Promise<{ ok: boolean; detail: string }> {
-  const device = await getDevice(idOrSlug);
+  const device = await getResolvedDevice(idOrSlug);
   if (!device) return { ok: false, detail: "Device not found" };
   return device.kind === "awtrix" ? testAwtrix(device) : testLametric(device);
 }
@@ -67,7 +71,7 @@ export async function testDevice(
 export async function identifyDevice(
   idOrSlug: string,
 ): Promise<{ ok: boolean; detail: string }> {
-  const device = await getDevice(idOrSlug);
+  const device = await getResolvedDevice(idOrSlug);
   if (!device) return { ok: false, detail: "Device not found" };
   return sendToDevice(device, {
     text: `Soy ${device.name}`,
@@ -87,7 +91,7 @@ export async function getDeviceStatus(idOrSlug: string): Promise<{
   power?: boolean;
   detail: string;
 }> {
-  const device = await getDevice(idOrSlug);
+  const device = await getResolvedDevice(idOrSlug);
   if (!device) return { ok: false, detail: "Device not found" };
   return device.kind === "awtrix"
     ? getAwtrixStatus(device)
@@ -99,7 +103,7 @@ export async function setDeviceBrightness(
   percent: number,
   autoBrightness?: boolean,
 ): Promise<{ ok: boolean; detail: string }> {
-  const device = await getDevice(idOrSlug);
+  const device = await getResolvedDevice(idOrSlug);
   if (!device) return { ok: false, detail: "Device not found" };
   const clamped = Math.max(0, Math.min(100, Math.round(percent)));
   return device.kind === "awtrix"

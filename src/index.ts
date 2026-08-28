@@ -8,12 +8,20 @@ import {
 } from "./adapters/homeAssistant.js";
 import { config } from "./config.js";
 import { closeDb, dbDisplay, initDb } from "./db/index.js";
-import { syncEnvDevices } from "./services/devices.js";
+import { syncEnvDevices, refreshAllDeviceHosts } from "./services/devices.js";
 import { startQueue } from "./services/queue.js";
 
 async function main(): Promise<void> {
   await initDb();
   await syncEnvDevices();
+  await refreshAllDeviceHosts().catch((err) => {
+    console.warn("Initial MAC host refresh failed:", err);
+  });
+  setInterval(() => {
+    refreshAllDeviceHosts().catch((err) => {
+      console.warn("Periodic MAC host refresh failed:", err);
+    });
+  }, 5 * 60_000);
   startQueue();
   startHomeAssistant();
 
