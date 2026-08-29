@@ -570,6 +570,7 @@ function registerPanelApi(app: FastifyInstance): void {
         priority: z.enum(["info", "warning", "critical"]).optional(),
         sound: z.union([z.boolean(), z.string()]).optional(),
         device: z.string().min(1).max(64).optional(),
+        devices: z.array(z.string().min(1).max(64)).optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -582,7 +583,8 @@ function registerPanelApi(app: FastifyInstance): void {
       priority: body.priority ?? "info",
       sound: body.sound,
       source: "panel",
-      deviceId: body.device,
+      deviceId: body.devices?.length ? undefined : body.device,
+      deviceIds: body.devices?.length ? body.devices : undefined,
     });
     await logNotify(
       "panel",
@@ -1117,6 +1119,9 @@ function registerPanelApi(app: FastifyInstance): void {
           entity_id: s.entity_id,
           state: s.state,
           friendly_name: s.attributes?.friendly_name ?? null,
+          unit: s.attributes?.unit_of_measurement
+            ? String(s.attributes.unit_of_measurement)
+            : null,
         })),
       };
     } catch (err) {

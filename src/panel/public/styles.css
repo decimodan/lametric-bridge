@@ -236,6 +236,94 @@ main {
   margin-bottom: 0.65rem;
 }
 
+.sensor-notify-preview-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.sensor-notify-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sensor-clock-face {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3.25rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.45rem;
+  background: #050508;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(168, 85, 247, 0.12);
+  overflow: hidden;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}
+
+.sensor-clock-face[data-priority="info"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.35),
+    0 0 16px rgba(96, 165, 250, 0.12);
+}
+
+.sensor-clock-face[data-priority="warning"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(251, 191, 36, 0.4),
+    0 0 16px rgba(251, 191, 36, 0.14);
+}
+
+.sensor-clock-face[data-priority="critical"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(248, 113, 113, 0.45),
+    0 0 18px rgba(248, 113, 113, 0.18);
+}
+
+.sensor-clock-icon {
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: grid;
+  place-items: center;
+  color: #a3e635;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.sensor-clock-scroll {
+  flex: 1;
+  min-width: 0;
+  color: #e8ffe8;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: sensorScrollHint 8s linear infinite;
+}
+
+@keyframes sensorScrollHint {
+  0%, 40% { transform: translateX(0); }
+  70%, 100% { transform: translateX(-8%); }
+}
+
+.sensor-notify-preview-actions {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+@media (max-width: 720px) {
+  .sensor-notify-preview-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 #sensorCardEditor textarea {
   min-height: 4.5rem;
   resize: vertical;

@@ -105,6 +105,22 @@
                   <input name="alertTemplate" id="sensorCardAlertTemplate" value="{{ name }}: {{ state }}{{ unit }}" />
                 </label>
                 <p class="hint">Variables: <code>name</code>, <code>title</code>, <code>state</code>, <code>unit</code>. Ejemplo CO₂: <code>{{ title }}: {{ state }} ppm</code></p>
+
+                <div class="sensor-notify-preview-row">
+                  <div class="sensor-notify-preview" aria-label="Vista previa de la notificación">
+                    <p class="meta">Vista previa</p>
+                    <div class="sensor-clock-face" data-priority="warning">
+                      <span class="sensor-clock-icon" aria-hidden="true">▣</span>
+                      <span class="sensor-clock-scroll" id="sensorNotifyPreviewText">—</span>
+                    </div>
+                    <p class="meta" id="sensorNotifyPreviewMeta">Usando estado actual de HA</p>
+                  </div>
+                  <div class="sensor-notify-preview-actions">
+                    <button type="button" id="sensorCardTestBtn" class="btn-lime">Enviar prueba</button>
+                    <p class="hint">Manda el texto renderizado a los relojes destino (sin esperar umbrales).</p>
+                  </div>
+                </div>
+
                 <div class="queue-targets" id="sensorCardTargets"></div>
                 <p class="meta" id="sensorCardAlertHint">Sin umbrales: alerta al cambiar el valor. Con &gt;/&lt;: solo dentro de esa zona.</p>
               </div>

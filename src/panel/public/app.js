@@ -566,6 +566,93 @@ function syncSensorCardAlertFields() {
   const on = $("#sensorCardAlertEnabled")?.checked;
   const fields = $("#sensorCardAlertFields");
   if (fields) fields.hidden = !on;
+  if (on) updateSensorNotifyPreview();
+}
+
+let sensorEditorLive = {
+  state: null,
+  unit: null,
+  friendlyName: null,
+  entityId: null,
+};
+
+function renderClientTemplate(template, vars) {
+  return String(template || "").replace(
+    /\{\{\s*(\w+)(?:\s*\|\s*(\w+)(?::(\d+))?)?\s*\}\}/g,
+    (_m, key, filter, arg) => {
+      const raw = vars[key] ?? "";
+      if (!filter) return raw;
+      const num = Number(String(raw).trim().replace(",", "."));
+      if (!Number.isFinite(num)) return raw;
+      if (filter === "int") return String(Math.trunc(num));
+      if (filter === "round" || filter === "fixed") {
+        const places = arg !== undefined ? Math.max(0, Math.min(8, Number(arg) || 2)) : 2;
+        if (filter === "fixed") return num.toFixed(places);
+        const factor = 10 ** places;
+        return String(Math.round(num * factor) / factor);
+      }
+      return raw;
+    },
+  );
+}
+
+function sensorNotifyPreviewVars() {
+  const title = $("#sensorCardTitle")?.value?.trim() || "Sensor";
+  const entityId = $("#sensorCardEntityId")?.value?.trim() || "";
+  return {
+    title,
+    name: sensorEditorLive.friendlyName || title,
+    state: sensorEditorLive.state ?? "—",
+    unit: sensorEditorLive.unit ?? "",
+    entity_id: entityId || sensorEditorLive.entityId || "",
+  };
+}
+
+function updateSensorNotifyPreview() {
+  const textEl = $("#sensorNotifyPreviewText");
+  const metaEl = $("#sensorNotifyPreviewMeta");
+  const face = document.querySelector(".sensor-clock-face");
+  if (!textEl) return;
+  const template =
+    $("#sensorCardAlertTemplate")?.value?.trim() ||
+    "{{ name }}: {{ state }}{{ unit }}";
+  const rendered = renderClientTemplate(template, sensorNotifyPreviewVars()).trim() || "—";
+  textEl.textContent = rendered;
+  const priority = $("#sensorCardPriority")?.value || "warning";
+  if (face) face.setAttribute("data-priority", priority);
+  if (metaEl) {
+    const st = sensorEditorLive.state;
+    metaEl.textContent =
+      st != null && st !== ""
+        ? `Estado HA: ${st}${sensorEditorLive.unit ? ` ${sensorEditorLive.unit}` : ""}`
+        : "Sin estado HA todavía — la vista usa placeholders";
+  }
+}
+
+async function refreshSensorEditorLiveState(entityId) {
+  const id = (entityId || $("#sensorCardEntityId")?.value || "").trim();
+  sensorEditorLive = { state: null, unit: null, friendlyName: null, entityId: id || null };
+  if (!id) {
+    updateSensorNotifyPreview();
+    return;
+  }
+  try {
+    const { states } = await api(
+      `/panel/api/ha/states?q=${encodeURIComponent(id)}`,
+    );
+    const exact = (states || []).find((s) => s.entity_id === id) || states?.[0];
+    if (exact) {
+      sensorEditorLive = {
+        state: exact.state ?? null,
+        unit: exact.unit ?? exact.attributes?.unit_of_measurement ?? null,
+        friendlyName: exact.friendly_name || null,
+        entityId: exact.entity_id || id,
+      };
+    }
+  } catch {
+    /* preview still works with placeholders */
+  }
+  updateSensorNotifyPreview();
 }
 
 function openSensorCardEditor(card, entityPrefill) {
@@ -590,6 +677,13 @@ function openSensorCardEditor(card, entityPrefill) {
     card?.alertTemplate || "{{ name }}: {{ state }}{{ unit }}";
   $("#sensorCardDelete").hidden = !card?.id;
 
+  sensorEditorLive = {
+    state: card?.state ?? entityPrefill?.state ?? null,
+    unit: card?.unit ?? entityPrefill?.unit ?? null,
+    friendlyName: card?.friendlyName ?? entityPrefill?.name ?? null,
+    entityId: card?.entityId || entityPrefill?.entity_id || null,
+  };
+
   const targets = $("#sensorCardTargets");
   if (targets) {
     const ent = {
@@ -602,6 +696,8 @@ function openSensorCardEditor(card, entityPrefill) {
   }
 
   syncSensorCardAlertFields();
+  updateSensorNotifyPreview();
+  refreshSensorEditorLiveState($("#sensorCardEntityId")?.value).catch(() => {});
   setMsg($("#sensorCardMsg"), "", "");
   editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -2846,6 +2942,60 @@ $("#sensorCardForm")?.addEventListener("submit", async (e) => {
 });
 
 $("#sensorCardAlertEnabled")?.addEventListener("change", syncSensorCardAlertFields);
+
+[
+  "#sensorCardAlertTemplate",
+  "#sensorCardTitle",
+  "#sensorCardEntityId",
+  "#sensorCardPriority",
+].forEach((sel) => {
+  $(sel)?.addEventListener("input", updateSensorNotifyPreview);
+  $(sel)?.addEventListener("change", updateSensorNotifyPreview);
+});
+
+$("#sensorCardEntityId")?.addEventListener("change", () => {
+  refreshSensorEditorLiveState().catch(() => {});
+});
+
+$("#sensorCardTestBtn")?.addEventListener("click", async () => {
+  const text = renderClientTemplate(
+    $("#sensorCardAlertTemplate")?.value || "{{ name }}: {{ state }}{{ unit }}",
+    sensorNotifyPreviewVars(),
+  ).trim();
+  if (!text) {
+    setMsg($("#sensorCardMsg"), "El texto de la notificación está vacío", "error");
+    return;
+  }
+  const targets = readQueueTargets($("#sensorCardTargets"), "sensor-card");
+  if (
+    targets !== undefined &&
+    !targets.length &&
+    !$("#sensorCardTargets [data-target-all]")?.checked
+  ) {
+    setMsg($("#sensorCardMsg"), "Elegí al menos un reloj o marcá Todos", "error");
+    return;
+  }
+  const btn = $("#sensorCardTestBtn");
+  try {
+    if (btn) btn.disabled = true;
+    const body = {
+      text,
+      priority: $("#sensorCardPriority")?.value || "warning",
+      sound: $("#sensorCardSound")?.checked || false,
+      icon: "a2867",
+    };
+    if (targets?.length) body.devices = targets;
+    const r = await api("/panel/api/notify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    setMsg($("#sensorCardMsg"), r.detail || "Prueba enviada", r.ok ? "ok" : "error");
+  } catch (err) {
+    setMsg($("#sensorCardMsg"), err.message, "error");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});
 
 (async function init() {
   await loadSoundCatalog();
