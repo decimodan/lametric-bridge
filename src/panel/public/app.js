@@ -459,6 +459,7 @@ function buildSensorGauge(card, index) {
         <strong data-sensor-state-label="${card.id}">${escapeHtml(card.friendlyName || card.entityId)}</strong>
       </span>
       <br /><span class="sensor-gauge-desc">${escapeHtml(card.description || "Sin explicación")}</span>
+      ${card.alertSummary ? `<br /><span class="sensor-gauge-alert">${escapeHtml(card.alertSummary)}</span>` : ""}
       <br /><span class="meta">${escapeHtml(card.entityId)}</span>
     </p>`;
   return article;
@@ -561,6 +562,12 @@ function hideSensorCardEditor() {
   setMsg($("#sensorCardMsg"), "", "");
 }
 
+function syncSensorCardAlertFields() {
+  const on = $("#sensorCardAlertEnabled")?.checked;
+  const fields = $("#sensorCardAlertFields");
+  if (fields) fields.hidden = !on;
+}
+
 function openSensorCardEditor(card, entityPrefill) {
   const editor = $("#sensorCardEditor");
   if (!editor) return;
@@ -571,7 +578,30 @@ function openSensorCardEditor(card, entityPrefill) {
   $("#sensorCardTitle").value = card?.title || entityPrefill?.name || "";
   $("#sensorCardDescription").value = card?.description || "";
   $("#sensorCardEnabled").checked = card?.enabled !== false;
+  $("#sensorCardAlertEnabled").checked = Boolean(card?.alertEnabled);
+  $("#sensorCardWhenGt").value = card?.whenGt ?? "";
+  $("#sensorCardWhenLt").value = card?.whenLt ?? "";
+  $("#sensorCardIntervalMin").value =
+    card?.intervalSec != null ? String(Math.max(1, Math.round(card.intervalSec / 60))) : "";
+  $("#sensorCardMinDelta").value = card?.minDelta ?? "";
+  $("#sensorCardPriority").value = card?.priority || "warning";
+  $("#sensorCardSound").checked = Boolean(card?.sound);
+  $("#sensorCardAlertTemplate").value =
+    card?.alertTemplate || "{{ name }}: {{ state }}{{ unit }}";
   $("#sensorCardDelete").hidden = !card?.id;
+
+  const targets = $("#sensorCardTargets");
+  if (targets) {
+    const ent = {
+      id: card?.id || "new-sensor",
+      device_id: card?.deviceId || null,
+      device_ids: card?.deviceIds || null,
+    };
+    targets.innerHTML = buildQueueTargetPicker(ent, "sensor-card");
+    bindQueueTargetPickers(targets);
+  }
+
+  syncSensorCardAlertFields();
   setMsg($("#sensorCardMsg"), "", "");
   editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -2762,11 +2792,38 @@ $("#sensorCardForm")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   const fd = new FormData(e.target);
   const id = String(fd.get("id") || "").trim();
+  const alertEnabled = fd.get("alertEnabled") === "on";
+  const intervalMin = fd.get("intervalMin");
+  const deviceTargets = readQueueTargetsForSave($("#sensorCardTargets"), "sensor-card");
   const payload = {
     entityId: String(fd.get("entityId") || "").trim(),
     title: String(fd.get("title") || "").trim(),
     description: String(fd.get("description") || "").trim(),
     enabled: fd.get("enabled") === "on",
+    alertEnabled,
+    whenGt:
+      fd.get("whenGt") !== "" && fd.get("whenGt") != null
+        ? Number(fd.get("whenGt"))
+        : null,
+    whenLt:
+      fd.get("whenLt") !== "" && fd.get("whenLt") != null
+        ? Number(fd.get("whenLt"))
+        : null,
+    minDelta:
+      fd.get("minDelta") !== "" && fd.get("minDelta") != null
+        ? Number(fd.get("minDelta"))
+        : null,
+    intervalSec:
+      intervalMin !== "" && intervalMin != null
+        ? Math.max(60, Math.round(Number(intervalMin) * 60))
+        : null,
+    priority: fd.get("priority") || "warning",
+    sound: fd.get("sound") === "on",
+    alertTemplate:
+      String(fd.get("alertTemplate") || "").trim() ||
+      "{{ name }}: {{ state }}{{ unit }}",
+    deviceId: deviceTargets.device_id,
+    deviceIds: deviceTargets.device_ids,
   };
   try {
     if (id) {
@@ -2787,6 +2844,8 @@ $("#sensorCardForm")?.addEventListener("submit", async (e) => {
     setMsg($("#sensorCardMsg"), err.message, "error");
   }
 });
+
+$("#sensorCardAlertEnabled")?.addEventListener("change", syncSensorCardAlertFields);
 
 (async function init() {
   await loadSoundCatalog();

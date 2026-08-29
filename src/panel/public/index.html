@@ -63,6 +63,53 @@
               <input name="enabled" type="checkbox" id="sensorCardEnabled" checked />
               Visible en inicio
             </label>
+
+            <div class="sensor-alert-rules">
+              <header class="card-head">
+                <h3>Reglas de alerta</h3>
+                <p class="hint">Si se cumple la condición, se encola una notificación al reloj elegido.</p>
+              </header>
+              <label class="check">
+                <input name="alertEnabled" type="checkbox" id="sensorCardAlertEnabled" />
+                Activar alertas para este sensor
+              </label>
+              <div id="sensorCardAlertFields" class="stack" hidden>
+                <div class="row">
+                  <label>Si valor &gt;
+                    <input name="whenGt" id="sensorCardWhenGt" type="number" step="0.1" placeholder="ej. 1000" />
+                  </label>
+                  <label>Si valor &lt;
+                    <input name="whenLt" id="sensorCardWhenLt" type="number" step="0.1" placeholder="ej. 400" />
+                  </label>
+                  <label>Cada N min
+                    <input name="intervalMin" id="sensorCardIntervalMin" type="number" min="1" step="1" placeholder="off" />
+                  </label>
+                  <label>Cambio mín. Δ
+                    <input name="minDelta" id="sensorCardMinDelta" type="number" min="0" step="0.1" placeholder="off" />
+                  </label>
+                </div>
+                <div class="row">
+                  <label>Prioridad
+                    <select name="priority" id="sensorCardPriority">
+                      <option value="info">info</option>
+                      <option value="warning" selected>warning</option>
+                      <option value="critical">critical</option>
+                    </select>
+                  </label>
+                  <label class="check">
+                    <input name="sound" type="checkbox" id="sensorCardSound" />
+                    Sonido
+                  </label>
+                </div>
+                <label>Texto en el reloj (template)
+                  <input name="alertTemplate" id="sensorCardAlertTemplate" value="{{ name }}: {{ state }}{{ unit }}" />
+                </label>
+                <p class="hint">Variables: <code>name</code>, <code>title</code>, <code>state</code>, <code>unit</code>. Ejemplo CO₂: <code>{{ title }}: {{ state }} ppm</code></p>
+                <div class="queue-targets" id="sensorCardTargets"></div>
+                <p class="meta" id="sensorCardAlertHint">Sin umbrales: alerta al cambiar el valor. Con &gt;/&lt;: solo dentro de esa zona.</p>
+              </div>
+            </div>
+
             <div class="row">
               <button type="submit" class="btn-lime">Guardar</button>
               <button type="button" id="sensorCardCancel" class="secondary">Cancelar</button>

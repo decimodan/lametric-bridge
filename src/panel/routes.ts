@@ -147,7 +147,17 @@ function registerPanelApi(app: FastifyInstance): void {
 
   app.get("/panel/api/sensor-cards/live", async (request, reply) => {
     try {
-      return { cards: await listSensorCardsLive() };
+      let states: Array<{
+        entity_id: string;
+        state: string;
+        attributes: Record<string, unknown>;
+      }> = [];
+      try {
+        states = await fetchHaStates();
+      } catch {
+        states = [];
+      }
+      return { cards: await listSensorCardsLive(states) };
     } catch (err) {
       return reply.code(502).send({
         error: err instanceof Error ? err.message : String(err),
@@ -163,6 +173,16 @@ function registerPanelApi(app: FastifyInstance): void {
         description: z.string().max(512).optional(),
         sortOrder: z.number().int().min(0).optional(),
         enabled: z.boolean().optional(),
+        alertEnabled: z.boolean().optional(),
+        whenGt: z.number().nullable().optional(),
+        whenLt: z.number().nullable().optional(),
+        minDelta: z.number().nonnegative().nullable().optional(),
+        intervalSec: z.number().int().min(10).nullable().optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        alertTemplate: z.string().max(256).optional(),
+        deviceId: z.string().min(1).max(64).nullable().optional(),
+        deviceIds: z.array(z.string().min(1).max(64)).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -183,6 +203,16 @@ function registerPanelApi(app: FastifyInstance): void {
         description: z.string().max(512).optional(),
         sortOrder: z.number().int().min(0).optional(),
         enabled: z.boolean().optional(),
+        alertEnabled: z.boolean().optional(),
+        whenGt: z.number().nullable().optional(),
+        whenLt: z.number().nullable().optional(),
+        minDelta: z.number().nonnegative().nullable().optional(),
+        intervalSec: z.number().int().min(10).nullable().optional(),
+        priority: z.enum(["info", "warning", "critical"]).optional(),
+        sound: z.boolean().optional(),
+        alertTemplate: z.string().max(256).optional(),
+        deviceId: z.string().min(1).max(64).nullable().optional(),
+        deviceIds: z.array(z.string().min(1).max(64)).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -198,6 +228,34 @@ function registerPanelApi(app: FastifyInstance): void {
           : parsed.data.description,
       sortOrder: parsed.data.sortOrder ?? existing.sortOrder,
       enabled: parsed.data.enabled ?? existing.enabled,
+      alertEnabled: parsed.data.alertEnabled ?? existing.alertEnabled,
+      whenGt:
+        parsed.data.whenGt === undefined ? existing.whenGt : parsed.data.whenGt,
+      whenLt:
+        parsed.data.whenLt === undefined ? existing.whenLt : parsed.data.whenLt,
+      minDelta:
+        parsed.data.minDelta === undefined
+          ? existing.minDelta
+          : parsed.data.minDelta,
+      intervalSec:
+        parsed.data.intervalSec === undefined
+          ? existing.intervalSec
+          : parsed.data.intervalSec,
+      priority: parsed.data.priority ?? existing.priority,
+      sound: parsed.data.sound ?? existing.sound,
+      alertTemplate: parsed.data.alertTemplate ?? existing.alertTemplate,
+      deviceId:
+        parsed.data.deviceIds !== undefined
+          ? null
+          : parsed.data.deviceId === undefined
+            ? existing.deviceId
+            : parsed.data.deviceId,
+      deviceIds:
+        parsed.data.deviceIds !== undefined
+          ? parsed.data.deviceIds
+          : parsed.data.deviceId !== undefined
+            ? null
+            : existing.deviceIds,
     });
     return { card: publicSensorCard(card) };
   });

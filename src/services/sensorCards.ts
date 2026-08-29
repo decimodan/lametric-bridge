@@ -1,6 +1,8 @@
 import { v4 as uuid } from "uuid";
-import { fetchHaStates } from "../adapters/homeAssistant.js";
 import { query } from "../db/index.js";
+import { getDevice } from "./devices.js";
+import { enqueue } from "./queue.js";
+import { renderTemplate, type Priority } from "./render.js";
 
 export type SensorCardRow = {
   id: string;
@@ -10,6 +12,18 @@ export type SensorCardRow = {
   sort_order: number;
   enabled: boolean;
   created_at: string | Date;
+  alert_enabled: boolean;
+  when_gt: number | null;
+  when_lt: number | null;
+  min_delta: number | null;
+  interval_sec: number | null;
+  priority: Priority;
+  sound: boolean;
+  alert_template: string;
+  device_id: string | null;
+  device_ids: string[] | null;
+  last_value: string | null;
+  last_sent_at: string | Date | null;
 };
 
 export type SensorCard = {
@@ -20,6 +34,18 @@ export type SensorCard = {
   sortOrder: number;
   enabled: boolean;
   createdAt: string | Date;
+  alertEnabled: boolean;
+  whenGt: number | null;
+  whenLt: number | null;
+  minDelta: number | null;
+  intervalSec: number | null;
+  priority: Priority;
+  sound: boolean;
+  alertTemplate: string;
+  deviceId: string | null;
+  deviceIds: string[] | null;
+  lastValue: string | null;
+  lastSentAt: string | Date | null;
 };
 
 export type SensorCardLive = SensorCard & {
@@ -27,7 +53,8 @@ export type SensorCardLive = SensorCard & {
   unit: string | null;
   domain: string;
   friendlyName: string | null;
-  deviceName: string | null;
+  deviceClass: string | null;
+  alertSummary: string | null;
 };
 
 function toSensorCard(row: SensorCardRow): SensorCard {
@@ -39,7 +66,35 @@ function toSensorCard(row: SensorCardRow): SensorCard {
     sortOrder: row.sort_order,
     enabled: row.enabled,
     createdAt: row.created_at,
+    alertEnabled: Boolean(row.alert_enabled),
+    whenGt: row.when_gt,
+    whenLt: row.when_lt,
+    minDelta: row.min_delta,
+    intervalSec: row.interval_sec,
+    priority: row.priority ?? "warning",
+    sound: Boolean(row.sound),
+    alertTemplate:
+      row.alert_template || "{{ name }}: {{ state }}{{ unit }}",
+    deviceId: row.device_id,
+    deviceIds: row.device_ids ?? null,
+    lastValue: row.last_value,
+    lastSentAt: row.last_sent_at,
   };
+}
+
+function formatAlertSummary(card: SensorCard): string | null {
+  if (!card.alertEnabled) return null;
+  const parts: string[] = [];
+  if (card.whenGt != null) parts.push(`>${card.whenGt}`);
+  if (card.whenLt != null) parts.push(`<${card.whenLt}`);
+  if (card.intervalSec != null) {
+    parts.push(`cada ${Math.round(card.intervalSec / 60)} min`);
+  }
+  if (card.minDelta != null) parts.push(`Δ≥${card.minDelta}`);
+  if (!parts.length) parts.push("al cambiar");
+  parts.push(card.priority);
+  if (card.sound) parts.push("sonido");
+  return parts.join(" · ");
 }
 
 export function publicSensorCard(card: SensorCard) {
@@ -50,6 +105,17 @@ export function publicSensorCard(card: SensorCard) {
     description: card.description,
     sortOrder: card.sortOrder,
     enabled: card.enabled,
+    alertEnabled: card.alertEnabled,
+    whenGt: card.whenGt,
+    whenLt: card.whenLt,
+    minDelta: card.minDelta,
+    intervalSec: card.intervalSec,
+    priority: card.priority,
+    sound: card.sound,
+    alertTemplate: card.alertTemplate,
+    deviceId: card.deviceId,
+    deviceIds: card.deviceIds,
+    alertSummary: formatAlertSummary(card),
   };
 }
 
@@ -70,6 +136,57 @@ export async function getSensorCard(id: string): Promise<SensorCard | null> {
   return res.rows[0] ? toSensorCard(res.rows[0]) : null;
 }
 
+export async function listAlertSensorCardsForEntity(
+  entityId: string,
+): Promise<SensorCard[]> {
+  const res = await query<SensorCardRow>(
+    `SELECT * FROM sensor_cards
+     WHERE entity_id = $1 AND alert_enabled = TRUE`,
+    [entityId],
+  );
+  return res.rows.map(toSensorCard);
+}
+
+export async function listIntervalSensorCards(): Promise<SensorCard[]> {
+  const res = await query<SensorCardRow>(
+    `SELECT * FROM sensor_cards
+     WHERE alert_enabled = TRUE
+       AND interval_sec IS NOT NULL
+       AND interval_sec >= 10
+       AND (
+         last_sent_at IS NULL
+         OR last_sent_at <= NOW() - (interval_sec * INTERVAL '1 second')
+       )
+     ORDER BY title ASC`,
+  );
+  return res.rows.map(toSensorCard);
+}
+
+async function resolveDeviceTargets(input: {
+  deviceId?: string | null;
+  deviceIds?: string[] | null;
+}): Promise<{ deviceId: string | null; deviceIds: string[] | null }> {
+  if (input.deviceIds !== undefined && input.deviceIds !== null) {
+    if (!input.deviceIds.length) {
+      return { deviceId: null, deviceIds: null };
+    }
+    const ids = (
+      await Promise.all(input.deviceIds.map(async (ref) => (await getDevice(ref))?.id))
+    ).filter((id): id is string => Boolean(id));
+    return {
+      deviceId: null,
+      deviceIds: ids.length ? [...new Set(ids)] : null,
+    };
+  }
+  if (input.deviceId !== undefined) {
+    const id = input.deviceId
+      ? ((await getDevice(input.deviceId))?.id ?? null)
+      : null;
+    return { deviceId: id, deviceIds: null };
+  }
+  return { deviceId: null, deviceIds: null };
+}
+
 export async function saveSensorCard(input: {
   id?: string;
   entityId: string;
@@ -77,6 +194,16 @@ export async function saveSensorCard(input: {
   description?: string;
   sortOrder?: number;
   enabled?: boolean;
+  alertEnabled?: boolean;
+  whenGt?: number | null;
+  whenLt?: number | null;
+  minDelta?: number | null;
+  intervalSec?: number | null;
+  priority?: Priority;
+  sound?: boolean;
+  alertTemplate?: string;
+  deviceId?: string | null;
+  deviceIds?: string[] | null;
 }): Promise<SensorCard> {
   const id = input.id ?? uuid();
   const existing = input.id ? await getSensorCard(input.id) : null;
@@ -91,15 +218,44 @@ export async function saveSensorCard(input: {
       ).rows[0]?.n ?? 0,
     );
 
+  let deviceId = existing?.deviceId ?? null;
+  let deviceIds = existing?.deviceIds ?? null;
+  if (input.deviceIds !== undefined) {
+    const resolved = await resolveDeviceTargets({ deviceIds: input.deviceIds });
+    deviceId = resolved.deviceId;
+    deviceIds = resolved.deviceIds;
+  } else if (input.deviceId !== undefined) {
+    const resolved = await resolveDeviceTargets({ deviceId: input.deviceId });
+    deviceId = resolved.deviceId;
+    deviceIds = resolved.deviceIds;
+  }
+
   await query(
-    `INSERT INTO sensor_cards (id, entity_id, title, description, sort_order, enabled)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO sensor_cards (
+       id, entity_id, title, description, sort_order, enabled,
+       alert_enabled, when_gt, when_lt, min_delta, interval_sec,
+       priority, sound, alert_template, device_id, device_ids
+     ) VALUES (
+       $1,$2,$3,$4,$5,$6,
+       $7,$8,$9,$10,$11,
+       $12,$13,$14,$15,$16
+     )
      ON CONFLICT (id) DO UPDATE SET
        entity_id = EXCLUDED.entity_id,
        title = EXCLUDED.title,
        description = EXCLUDED.description,
        sort_order = EXCLUDED.sort_order,
-       enabled = EXCLUDED.enabled`,
+       enabled = EXCLUDED.enabled,
+       alert_enabled = EXCLUDED.alert_enabled,
+       when_gt = EXCLUDED.when_gt,
+       when_lt = EXCLUDED.when_lt,
+       min_delta = EXCLUDED.min_delta,
+       interval_sec = EXCLUDED.interval_sec,
+       priority = EXCLUDED.priority,
+       sound = EXCLUDED.sound,
+       alert_template = EXCLUDED.alert_template,
+       device_id = EXCLUDED.device_id,
+       device_ids = EXCLUDED.device_ids`,
     [
       id,
       input.entityId.trim(),
@@ -107,6 +263,22 @@ export async function saveSensorCard(input: {
       (input.description ?? existing?.description ?? "").trim(),
       sortOrder,
       input.enabled ?? existing?.enabled ?? true,
+      input.alertEnabled ?? existing?.alertEnabled ?? false,
+      input.whenGt !== undefined ? input.whenGt : (existing?.whenGt ?? null),
+      input.whenLt !== undefined ? input.whenLt : (existing?.whenLt ?? null),
+      input.minDelta !== undefined ? input.minDelta : (existing?.minDelta ?? null),
+      input.intervalSec !== undefined
+        ? input.intervalSec
+        : (existing?.intervalSec ?? null),
+      input.priority ?? existing?.priority ?? "warning",
+      input.sound ?? existing?.sound ?? false,
+      (
+        input.alertTemplate ??
+        existing?.alertTemplate ??
+        "{{ name }}: {{ state }}{{ unit }}"
+      ).trim() || "{{ name }}: {{ state }}{{ unit }}",
+      deviceId,
+      deviceIds,
     ],
   );
 
@@ -120,7 +292,109 @@ export async function deleteSensorCard(id: string): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-function deviceNameFromEntityId(
+export async function markSensorCardSent(
+  id: string,
+  value: string,
+): Promise<void> {
+  await query(
+    `UPDATE sensor_cards
+     SET last_value = $1, last_sent_at = NOW()
+     WHERE id = $2`,
+    [value, id],
+  );
+}
+
+function parseNumericState(value: string): number | null {
+  const n = Number(String(value).trim().replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
+
+function passesAbsoluteRules(
+  card: Pick<SensorCard, "whenGt" | "whenLt">,
+  state: string,
+): boolean {
+  const hasGt = card.whenGt != null;
+  const hasLt = card.whenLt != null;
+  if (!hasGt && !hasLt) return true;
+  const n = parseNumericState(state);
+  if (n === null) return false;
+  if (hasGt && n > Number(card.whenGt)) return true;
+  if (hasLt && n < Number(card.whenLt)) return true;
+  return false;
+}
+
+function shouldEmitOnChange(
+  card: Pick<SensorCard, "lastValue" | "minDelta">,
+  newState: string,
+): boolean {
+  const prev = card.lastValue;
+  if (prev == null) return true;
+  if (prev === newState) return false;
+  const threshold = card.minDelta;
+  if (threshold == null) return true;
+  const a = parseNumericState(prev);
+  const b = parseNumericState(newState);
+  if (a === null || b === null) return true;
+  return Math.abs(b - a) >= threshold;
+}
+
+export function shouldEmitSensorCardOnChange(
+  card: SensorCard,
+  newState: string,
+): boolean {
+  if (!passesAbsoluteRules(card, newState)) return false;
+  if (!shouldEmitOnChange(card, newState)) return false;
+  if (card.whenGt == null && card.whenLt == null) return true;
+  const prev = card.lastValue;
+  if (prev == null) return true;
+  const wasInside = passesAbsoluteRules(card, prev);
+  if (!wasInside) return true;
+  return card.minDelta != null;
+}
+
+export function isSensorCardIntervalDriven(card: SensorCard): boolean {
+  return card.intervalSec != null && Number(card.intervalSec) >= 10;
+}
+
+function enqueueTargets(card: SensorCard): {
+  deviceId?: string;
+  deviceIds?: string[];
+} {
+  if (card.deviceIds?.length) return { deviceIds: card.deviceIds };
+  if (card.deviceId) return { deviceId: card.deviceId };
+  return {};
+}
+
+export async function emitSensorCardAlert(
+  card: SensorCard,
+  state: string,
+  attributes: Record<string, unknown>,
+  sourcePrefix: string,
+): Promise<boolean> {
+  if (!passesAbsoluteRules(card, state)) return false;
+
+  const text = renderTemplate(card.alertTemplate, {
+    state,
+    name: String(attributes.friendly_name ?? card.title),
+    title: card.title,
+    unit: String(attributes.unit_of_measurement ?? ""),
+    entity_id: card.entityId,
+  }).trim();
+  if (!text) return false;
+
+  await enqueue({
+    text,
+    icon: "a2867",
+    priority: card.priority,
+    sound: card.sound,
+    source: `${sourcePrefix}:sensor-card:${card.id}`,
+    ...enqueueTargets(card),
+  });
+  await markSensorCardSent(card.id, state);
+  return true;
+}
+
+function deviceClassFromEntity(
   entityId: string,
   attributes: Record<string, unknown>,
 ): string | null {
@@ -134,20 +408,15 @@ function deviceNameFromEntityId(
   return null;
 }
 
-export async function listSensorCardsLive(): Promise<SensorCardLive[]> {
-  const cards = await listSensorCards(true);
-  if (!cards.length) return [];
-
-  let states: Array<{
+export async function listSensorCardsLive(
+  states: Array<{
     entity_id: string;
     state: string;
     attributes: Record<string, unknown>;
-  }> = [];
-  try {
-    states = await fetchHaStates();
-  } catch {
-    states = [];
-  }
+  }>,
+): Promise<SensorCardLive[]> {
+  const cards = await listSensorCards(true);
+  if (!cards.length) return [];
   const byId = new Map(states.map((s) => [s.entity_id, s]));
 
   return cards.map((card) => {
@@ -163,9 +432,10 @@ export async function listSensorCardsLive(): Promise<SensorCardLive[]> {
       friendlyName: s
         ? String(s.attributes?.friendly_name ?? "") || null
         : null,
-      deviceName: s
-        ? deviceNameFromEntityId(card.entityId, s.attributes ?? {})
+      deviceClass: s
+        ? deviceClassFromEntity(card.entityId, s.attributes ?? {})
         : null,
+      alertSummary: formatAlertSummary(card),
     };
   });
 }
