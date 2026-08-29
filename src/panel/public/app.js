@@ -94,10 +94,12 @@ $$("#tabs button").forEach((btn) => {
     btn.classList.add("active");
     $(`#tab-${btn.dataset.tab}`).classList.add("active");
     if (btn.dataset.tab === "device") {
+      showDeviceHome();
       loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
       startGaugePolling();
     } else {
       stopGaugePolling();
+      showDeviceHome();
     }
     if (btn.dataset.tab === "cards") {
       loadCards().catch((e) => setMsg($("#cardMsg"), e.message, "error"));
@@ -147,6 +149,46 @@ async function refreshStatus() {
 
 let cachedDevices = [];
 let gaugePollTimer = null;
+let selectedDeviceDetailId = null;
+
+function showDeviceHome() {
+  selectedDeviceDetailId = null;
+  const home = $("#deviceHomeView");
+  const detail = $("#deviceDetailView");
+  if (home) home.hidden = false;
+  if (detail) detail.hidden = true;
+}
+
+function openDeviceDetail(deviceId) {
+  const device = cachedDevices.find((d) => d.id === deviceId);
+  if (!device) return;
+  selectedDeviceDetailId = deviceId;
+  $("#deviceHomeView").hidden = true;
+  $("#deviceDetailView").hidden = false;
+  $("#deviceDetailTitle").textContent = device.name;
+  $("#deviceDetailSubtitle").textContent = `${device.slug} · ${device.host}`;
+  $("#deviceDetailView .two-col").hidden = false;
+  $("#deviceAddSection").hidden = true;
+  const notifySel = $("#notifyDevice");
+  if (notifySel) notifySel.value = deviceId;
+  loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
+}
+
+function openAddDeviceSlot(slotIndex) {
+  selectedDeviceDetailId = `add-${slotIndex}`;
+  $("#deviceHomeView").hidden = true;
+  $("#deviceDetailView").hidden = false;
+  $("#deviceDetailTitle").textContent = `Reloj ${slotIndex + 1}`;
+  $("#deviceDetailSubtitle").textContent = "Sin configurar — agregá un reloj en este slot";
+  $("#deviceDetailView .two-col").hidden = true;
+  $("#deviceAddSection").hidden = false;
+  setMsg($("#deviceMsg"), "", "");
+}
+
+$("#deviceDetailBack")?.addEventListener("click", () => {
+  showDeviceHome();
+  loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
+});
 
 const GAUGE_GRADIENTS = [
   { from: "#60a5fa", to: "#a78bfa", glow: "rgba(96, 165, 250, 0.55)" },
@@ -294,7 +336,8 @@ function updateGaugeStatus(deviceId, status) {
 
 function bindGaugeActions(container) {
   container.querySelectorAll("[data-gauge-test]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       try {
         const r = await api(`/panel/api/devices/${btn.dataset.gaugeTest}/test`, {
           method: "POST",
@@ -308,7 +351,8 @@ function bindGaugeActions(container) {
   });
 
   container.querySelectorAll("[data-gauge-identify]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       try {
         const r = await api(`/panel/api/devices/${btn.dataset.gaugeIdentify}/identify`, {
           method: "POST",
@@ -317,6 +361,29 @@ function bindGaugeActions(container) {
         setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
       } catch (err) {
         setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
+}
+
+function bindGaugeClicks(container) {
+  container.querySelectorAll(".clock-gauge").forEach((gauge, index) => {
+    gauge.classList.add("clock-gauge--clickable");
+    gauge.setAttribute("role", "button");
+    gauge.setAttribute("tabindex", "0");
+    const open = () => {
+      const deviceId = gauge.dataset.deviceId;
+      if (deviceId) openDeviceDetail(deviceId);
+      else openAddDeviceSlot(index);
+    };
+    gauge.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      open();
+    });
+    gauge.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
       }
     });
   });
@@ -340,6 +407,7 @@ async function refreshClockGauges() {
     container.appendChild(buildClockGauge(i, device, status));
   }
   bindGaugeActions(container);
+  bindGaugeClicks(container);
 }
 
 function startGaugePolling() {
@@ -380,16 +448,26 @@ async function loadDevices() {
   cachedDevices = devices || [];
   fillDeviceSelects();
   await refreshClockGauges();
+
+  if (!selectedDeviceDetailId) return;
+
   const list = $("#deviceList");
+  if (!list) return;
   list.innerHTML = "";
-  if (!cachedDevices.length) {
+
+  const showDevices = selectedDeviceDetailId.startsWith("add-")
+    ? []
+    : cachedDevices.filter((d) => d.id === selectedDeviceDetailId);
+
+  if (!showDevices.length) {
+    if (selectedDeviceDetailId.startsWith("add-")) return;
     const li = document.createElement("li");
-    li.innerHTML = `<div class="meta">No hay relojes. Agregá uno o definí LAMETRIC_* / AWTRIX_BASE_URL.</div>`;
+    li.innerHTML = `<div class="meta">Reloj no encontrado.</div>`;
     list.appendChild(li);
     return;
   }
 
-  for (const d of cachedDevices) {
+  for (const d of showDevices) {
     const li = document.createElement("li");
     const kindLabel = d.kind === "awtrix" ? "Ulanzi / AWTRIX" : "LaMetric";
     const env = d.envManaged ? `<span class="badge">env</span>` : "";
@@ -558,6 +636,7 @@ $("#deviceForm").addEventListener("submit", async (e) => {
     });
     e.target.reset();
     setMsg($("#deviceMsg"), "Reloj agregado", "ok");
+    showDeviceHome();
     await loadDevices();
     refreshStatus();
   } catch (err) {
@@ -1660,6 +1739,7 @@ $("#refreshLogs").addEventListener("click", () => loadLogs());
 (async function init() {
   await loadSoundCatalog();
   await refreshStatus();
+  showDeviceHome();
   await loadDevices();
   startGaugePolling();
   await loadConnectionCatalog();

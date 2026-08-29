@@ -350,6 +350,59 @@ main {
   font-size: 0.75rem;
 }
 
+.clock-gauge--clickable {
+  cursor: pointer;
+}
+
+.clock-gauge--clickable:hover:not(.clock-gauge--empty) {
+  transform: translateY(-2px);
+}
+
+.clock-gauge--empty.clock-gauge--clickable:hover {
+  opacity: 0.75;
+  border-color: rgba(168, 85, 247, 0.45);
+}
+
+.device-detail[hidden] {
+  display: none !important;
+}
+
+.device-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+
+.device-detail-head h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.device-detail-head .hint {
+  margin: 0.2rem 0 0;
+}
+
+.device-detail-head > div {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.device-detail-head #refreshDeviceHosts {
+  margin-left: auto;
+}
+
+#deviceAddSection:not([hidden]) {
+  margin-top: 1rem;
+}
+
+#deviceDetailView .two-col[hidden] {
+  display: none !important;
+}
+
 @media (max-width: 900px) {
   .clock-gauges {
     grid-template-columns: 1fr;

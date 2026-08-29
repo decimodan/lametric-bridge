@@ -29,50 +29,106 @@
 
   <main>
     <section id="tab-device" class="panel active">
-      <div class="clock-gauges" id="clockGauges" aria-label="Relojes conectados"></div>
+      <div id="deviceHomeView" class="device-home">
+        <div class="clock-gauges" id="clockGauges" aria-label="Relojes conectados"></div>
 
-      <div class="widget-grid status-grid">
-        <article class="card card-dark status-card">
-          <p class="card-label">Relojes</p>
-          <p class="card-value" id="statDeviceValue">—</p>
-          <p class="card-meta" id="statDeviceMeta">sin configurar</p>
-          <span class="status-dot" id="statDeviceDot" data-state="off"></span>
-        </article>
-        <article class="card card-accent status-card">
-          <p class="card-label">Home Assistant</p>
-          <p class="card-value" id="statHaValue">—</p>
-          <p class="card-meta" id="statHaMeta">idle</p>
-          <span class="status-dot" id="statHaDot" data-state="off"></span>
-        </article>
-        <article class="card status-card">
-          <p class="card-label">Cola</p>
-          <p class="card-value accent-lime" id="statQueueValue">0</p>
-          <p class="card-meta">pendientes</p>
-        </article>
-        <article class="card card-coral status-card">
-          <p class="card-label">Apps · Canales</p>
-          <p class="card-value" id="statAppsValue">0 · 0</p>
-          <p class="card-meta">registrados</p>
-        </article>
+        <div class="widget-grid status-grid">
+          <article class="card card-dark status-card">
+            <p class="card-label">Relojes</p>
+            <p class="card-value" id="statDeviceValue">—</p>
+            <p class="card-meta" id="statDeviceMeta">sin configurar</p>
+            <span class="status-dot" id="statDeviceDot" data-state="off"></span>
+          </article>
+          <article class="card card-accent status-card">
+            <p class="card-label">Home Assistant</p>
+            <p class="card-value" id="statHaValue">—</p>
+            <p class="card-meta" id="statHaMeta">idle</p>
+            <span class="status-dot" id="statHaDot" data-state="off"></span>
+          </article>
+          <article class="card status-card">
+            <p class="card-label">Cola</p>
+            <p class="card-value accent-lime" id="statQueueValue">0</p>
+            <p class="card-meta">pendientes</p>
+          </article>
+          <article class="card card-coral status-card">
+            <p class="card-label">Apps · Canales</p>
+            <p class="card-value" id="statAppsValue">0 · 0</p>
+            <p class="card-meta">registrados</p>
+          </article>
+        </div>
       </div>
 
-      <div class="widget-grid two-col">
-        <article class="card">
+      <div id="deviceDetailView" class="device-detail" hidden>
+        <header class="device-detail-head">
+          <button type="button" id="deviceDetailBack" class="secondary">← Volver</button>
+          <div>
+            <h1 id="deviceDetailTitle">Reloj</h1>
+            <p class="hint" id="deviceDetailSubtitle"></p>
+          </div>
+          <button type="button" id="refreshDeviceHosts" class="secondary">Refrescar IPs (MAC)</button>
+        </header>
+
+        <div class="widget-grid two-col">
+          <article class="card" id="deviceSettingsSection">
+            <header class="card-head">
+              <h2>Ajustes del reloj</h2>
+              <p class="hint" id="deviceHint">
+                Ligá el reloj por <code>MAC</code> para redescubrir la IP si cambia en la LAN.
+              </p>
+            </header>
+            <ul id="deviceList" class="list device-list"></ul>
+            <p class="msg" id="deviceMsg"></p>
+          </article>
+
+          <article class="card card-dark">
+            <header class="card-head">
+              <h2>Enviar notificación</h2>
+              <p class="hint">En el API usá <code>device</code> con el slug de este reloj.</p>
+            </header>
+            <form id="notifyForm" class="stack">
+              <label>Texto
+                <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
+              </label>
+              <div class="row">
+                <label>Destino
+                  <select name="device" id="notifyDevice">
+                    <option value="">Todos</option>
+                  </select>
+                </label>
+                <label>Icono
+                  <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
+                </label>
+                <label>Prioridad
+                  <select name="priority">
+                    <option value="info">info</option>
+                    <option value="warning">warning</option>
+                    <option value="critical">critical</option>
+                  </select>
+                </label>
+                <label class="check">
+                  <input name="sound" type="checkbox" id="notifySoundCheck" />
+                  Sonido
+                </label>
+                <label id="notifySoundWrap">Cuál
+                  <select name="soundId" id="notifySoundSelect"></select>
+                </label>
+              </div>
+              <div class="row">
+                <button type="submit" class="btn-lime">Enviar</button>
+                <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
+              </div>
+              <p class="msg" id="notifyMsg"></p>
+            </form>
+          </article>
+        </div>
+
+        <article class="card" id="deviceAddSection" hidden>
           <header class="card-head">
-            <h1>Relojes</h1>
-            <p class="hint" id="deviceHint">
-              LaMetric Time y Ulanzi (AWTRIX) conviven. Cada uno tiene un <code>slug</code>
-              para identificarlo en notificaciones y en Home Assistant. Opcional: ligá cada reloj por
-              <code>MAC</code> para redescubrir la IP si cambia en la LAN.
+            <h2>Agregar reloj</h2>
+            <p class="hint">
+              LaMetric Time y Ulanzi (AWTRIX). Cada uno necesita un <code>slug</code> único.
             </p>
           </header>
-          <div class="row card-toolbar" style="margin-top:0">
-            <button type="button" id="refreshDeviceHosts" class="secondary">Refrescar IPs (MAC)</button>
-          </div>
-          <ul id="deviceList" class="list device-list"></ul>
-          <p class="msg" id="deviceMsg"></p>
-
-          <h2>Agregar reloj</h2>
           <form id="deviceForm" class="stack">
             <div class="row">
               <label>Nombre
@@ -100,47 +156,6 @@
               </label>
             </div>
             <button type="submit" class="btn-lime">Agregar</button>
-          </form>
-        </article>
-
-        <article class="card card-dark">
-          <header class="card-head">
-            <h1>Enviar notificación</h1>
-            <p class="hint">Vacío en destino = todos los relojes. En el API usá <code>device</code> con el slug.</p>
-          </header>
-          <form id="notifyForm" class="stack">
-            <label>Texto
-              <input name="text" maxlength="256" placeholder="Hola desde lametric-bridge" required />
-            </label>
-            <div class="row">
-              <label>Destino
-                <select name="device" id="notifyDevice">
-                  <option value="">Todos</option>
-                </select>
-              </label>
-              <label>Icono
-                <input name="icon" class="icon-field" value="a2867" style="width:8rem" />
-              </label>
-              <label>Prioridad
-                <select name="priority">
-                  <option value="info">info</option>
-                  <option value="warning">warning</option>
-                  <option value="critical">critical</option>
-                </select>
-              </label>
-              <label class="check">
-                <input name="sound" type="checkbox" id="notifySoundCheck" />
-                Sonido
-              </label>
-              <label id="notifySoundWrap">Cuál
-                <select name="soundId" id="notifySoundSelect"></select>
-              </label>
-            </div>
-            <div class="row">
-              <button type="submit" class="btn-lime">Enviar</button>
-              <button type="button" id="notifyTest" class="secondary">Enviar prueba</button>
-            </div>
-            <p class="msg" id="notifyMsg"></p>
           </form>
         </article>
       </div>
