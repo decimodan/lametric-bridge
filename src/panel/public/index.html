@@ -374,18 +374,75 @@
     <section id="tab-queue" class="panel">
       <header class="section-head">
         <h1>Cola → Relojes</h1>
-        <p class="hint">Elegí una entidad mapeada, prioridad, y encolala. La cola se procesa por prioridad (critical → warning → info).</p>
+        <p class="hint">
+          Configurá alertas automáticas (cada N minutos, umbrales) y encolá manualmente.
+          Las reglas usan entidades de Home Assistant y se envían al reloj que elijas.
+        </p>
       </header>
 
       <div class="queue-layout">
-        <article class="card">
-          <div class="row card-toolbar">
-            <h2>Entidades</h2>
-            <button type="button" id="refreshQueueEntities" class="secondary">Actualizar estados</button>
-          </div>
-          <p class="msg" id="queueMsg"></p>
-          <ul id="queueEntityList" class="list"></ul>
-        </article>
+        <div class="stack gap-md">
+          <article class="card">
+            <header class="card-head">
+              <h2>Nueva alerta</h2>
+              <p class="hint">Mapeá una entidad HA con reglas de disparo y destino.</p>
+            </header>
+            <form id="queueAlertForm" class="stack">
+              <div class="row">
+                <label>Entidad HA
+                  <input name="entity_id" id="queueAlertEntityId" placeholder="sensor.temperatura" required />
+                </label>
+                <button type="button" id="queueHaPickBtn" class="secondary">Buscar en HA</button>
+              </div>
+              <ul id="queueHaStates" class="list compact"></ul>
+              <label>Texto (template)
+                <input name="template" value="{{ name }}: {{ state | round:1 }}{{ unit }}" />
+              </label>
+              <div class="row">
+                <label>Prioridad
+                  <select name="priority">
+                    <option value="info">info</option>
+                    <option value="warning" selected>warning</option>
+                    <option value="critical">critical</option>
+                  </select>
+                </label>
+                <label class="check">
+                  <input name="sound" type="checkbox" />
+                  Sonido
+                </label>
+                <label class="check">
+                  <input name="enabled" type="checkbox" checked />
+                  Activa
+                </label>
+              </div>
+              <div class="row">
+                <label>Cada N min
+                  <input name="interval_min" type="number" min="1" step="1" placeholder="off" />
+                </label>
+                <label>Si valor &gt;
+                  <input name="when_gt" type="number" step="0.1" placeholder="off" />
+                </label>
+                <label>Si valor &lt;
+                  <input name="when_lt" type="number" step="0.1" placeholder="off" />
+                </label>
+                <label>Cambio mín. Δ
+                  <input name="min_delta" type="number" min="0" step="0.1" placeholder="off" />
+                </label>
+              </div>
+              <div class="queue-targets" id="queueAlertTargets"></div>
+              <button type="submit" class="btn-lime">Crear alerta</button>
+            </form>
+            <p class="msg" id="queueMsg"></p>
+          </article>
+
+          <article class="card">
+            <div class="row card-toolbar">
+              <h2>Alertas configuradas</h2>
+              <button type="button" id="refreshQueueEntities" class="secondary">Actualizar estados</button>
+            </div>
+            <ul id="queueEntityList" class="list queue-alert-list"></ul>
+          </article>
+        </div>
 
         <div class="stack gap-md">
           <article class="card card-dark">

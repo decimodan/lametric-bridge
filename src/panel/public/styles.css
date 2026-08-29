@@ -929,6 +929,50 @@ code {
   align-items: flex-end;
 }
 
+.queue-targets-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.25rem;
+}
+
+.queue-alert-list li.queue-alert-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.queue-alert-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.queue-alert-form {
+  margin: 0;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgba(168, 85, 247, 0.12);
+}
+
+.queue-alert-actions {
+  align-items: center;
+}
+
+.queue-alert-rules {
+  color: var(--neon);
+  font-weight: 600;
+}
+
+.badge.ok {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+
+#queueHaStates li {
+  padding: 0.35rem 0;
+}
+
 .queue-targets {
   display: flex;
   flex-wrap: wrap;

@@ -79,6 +79,7 @@ export async function upsertHaEntity(input: {
   when_gt?: number | null;
   when_lt?: number | null;
   device_id?: string | null;
+  device_ids?: string[] | null;
 }): Promise<HaEntityRow> {
   const id = input.id ?? uuid();
   const existingRes = input.id
@@ -100,12 +101,25 @@ export async function upsertHaEntity(input: {
     input.when_gt === undefined ? (existing?.when_gt ?? null) : input.when_gt;
   const whenLt =
     input.when_lt === undefined ? (existing?.when_lt ?? null) : input.when_lt;
-  const deviceId =
-    input.device_id === undefined
-      ? (existing?.device_id ?? null)
-      : input.device_id
-        ? ((await getDevice(input.device_id))?.id ?? null)
-        : null;
+  let deviceId = existing?.device_id ?? null;
+  let deviceIds: string[] | null = existing?.device_ids ?? null;
+
+  if (input.device_ids !== undefined && input.device_ids !== null) {
+    deviceIds = input.device_ids.length
+      ? (
+          await Promise.all(
+            input.device_ids.map(async (ref) => (await getDevice(ref))?.id),
+          )
+        ).filter((id): id is string => Boolean(id))
+      : null;
+    deviceIds = deviceIds?.length ? [...new Set(deviceIds)] : null;
+    deviceId = null;
+  } else if (input.device_id !== undefined) {
+    deviceId = input.device_id
+      ? ((await getDevice(input.device_id))?.id ?? null)
+      : null;
+    deviceIds = null;
+  }
 
   if (existing) {
     await query(
@@ -122,8 +136,9 @@ export async function upsertHaEntity(input: {
          min_delta = $10,
          when_gt = $11,
          when_lt = $12,
-         device_id = $13
-       WHERE id = $14`,
+         device_id = $13,
+         device_ids = $14
+       WHERE id = $15`,
       [
         input.entity_id,
         input.mode,
@@ -138,6 +153,7 @@ export async function upsertHaEntity(input: {
         whenGt,
         whenLt,
         deviceId,
+        deviceIds,
         existing.id,
       ],
     );
@@ -151,8 +167,8 @@ export async function upsertHaEntity(input: {
   await query(
     `INSERT INTO ha_entities (
        id, entity_id, mode, template, icon, channel_id, enabled,
-       priority, sound, interval_sec, min_delta, when_gt, when_lt, device_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+       priority, sound, interval_sec, min_delta, when_gt, when_lt, device_id, device_ids
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
     [
       id,
       input.entity_id,
@@ -168,6 +184,7 @@ export async function upsertHaEntity(input: {
       whenGt,
       whenLt,
       deviceId,
+      deviceIds,
     ],
   );
 
@@ -296,6 +313,18 @@ function isIntervalDriven(mapping: Pick<HaEntityRow, "interval_sec">): boolean {
   return mapping.interval_sec != null && Number(mapping.interval_sec) >= 10;
 }
 
+export function haEntityEnqueueTargets(
+  mapping: Pick<HaEntityRow, "device_id" | "device_ids">,
+): { deviceId?: string; deviceIds?: string[] } {
+  if (mapping.device_ids?.length) {
+    return { deviceIds: mapping.device_ids };
+  }
+  if (mapping.device_id) {
+    return { deviceId: mapping.device_id };
+  }
+  return {};
+}
+
 async function markEntitySent(id: string, value: string): Promise<void> {
   await query(
     `UPDATE ha_entities
@@ -326,7 +355,7 @@ async function emitEntity(
       priority: mapping.priority ?? "info",
       sound: mapping.sound ?? false,
       source: `${sourcePrefix}:${mapping.entity_id}`,
-      deviceId: mapping.device_id ?? undefined,
+      ...haEntityEnqueueTargets(mapping),
     });
     await markEntitySent(mapping.id, state);
     return true;
@@ -445,6 +474,13 @@ async function tickIntervalEntities(): Promise<void> {
     const s = byId.get(mapping.entity_id);
     if (!s) continue;
     if (!passesAbsoluteRules(mapping, s.state)) continue;
+    if (
+      mapping.min_delta != null &&
+      mapping.last_value != null &&
+      !shouldEmitOnChange(mapping, s.state)
+    ) {
+      continue;
+    }
     await emitEntity(mapping, s.state, s.attributes ?? {}, "ha-interval");
   }
 }
@@ -499,10 +535,15 @@ export async function enqueueHaEntity(
   if (targetDevices !== undefined && targetDevices !== null) {
     if (targetDevices.length === 0) {
       deviceId = undefined;
+      deviceIds = undefined;
     } else {
       deviceId = undefined;
       deviceIds = targetDevices;
     }
+  } else {
+    const targets = haEntityEnqueueTargets(mapping);
+    deviceId = targets.deviceId;
+    deviceIds = targets.deviceIds;
   }
 
   await enqueue({
@@ -541,6 +582,7 @@ export async function previewHaEntities(): Promise<
     last_value: string | null;
     last_sent_at: string | Date | null;
     device_id: string | null;
+    device_ids: string[] | null;
     device_name: string | null;
     state: string | null;
     friendly_name: string | null;
@@ -572,6 +614,14 @@ export async function previewHaEntities(): Promise<
           entity_id: ent.entity_id,
         }).trim()
       : null;
+    const deviceNames =
+      ent.device_ids?.length
+        ? ent.device_ids
+            .map((id) => deviceById.get(id)?.name ?? id)
+            .join(", ")
+        : ent.device_id
+          ? (deviceById.get(ent.device_id)?.name ?? ent.device_id)
+          : "todos";
     return {
       id: ent.id,
       entity_id: ent.entity_id,
@@ -588,9 +638,8 @@ export async function previewHaEntities(): Promise<
       last_value: ent.last_value,
       last_sent_at: ent.last_sent_at,
       device_id: ent.device_id,
-      device_name: ent.device_id
-        ? (deviceById.get(ent.device_id)?.name ?? null)
-        : "todos",
+      device_ids: ent.device_ids ?? null,
+      device_name: deviceNames,
       state: s?.state ?? null,
       friendly_name: s
         ? String(s.attributes?.friendly_name ?? "") || null

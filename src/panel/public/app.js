@@ -1313,24 +1313,157 @@ function queueDeviceLabel(deviceId) {
   return d ? d.name : deviceId;
 }
 
-function buildQueueTargetPicker(ent) {
-  const defaultAll = !ent.device_id;
+function intervalMinFromSec(sec) {
+  if (!sec) return "";
+  return String(Math.max(1, Math.round(Number(sec) / 60)));
+}
+
+function intervalSecFromMin(min) {
+  if (min === "" || min == null) return null;
+  const n = Number(min);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.max(60, Math.round(n * 60));
+}
+
+function formatAlertRules(ent) {
+  const parts = [];
+  if (ent.interval_sec) {
+    parts.push(`cada ${intervalMinFromSec(ent.interval_sec)} min`);
+  }
+  if (ent.when_gt != null && ent.when_gt !== "") parts.push(`>${ent.when_gt}`);
+  if (ent.when_lt != null && ent.when_lt !== "") parts.push(`<${ent.when_lt}`);
+  if (ent.min_delta != null && ent.min_delta !== "") parts.push(`Δ≥${ent.min_delta}`);
+  if (!parts.length) parts.push("al cambiar de valor");
+  return parts.join(" · ");
+}
+
+function buildQueueTargetPicker(ent, targetKey = ent.id) {
+  const ids = ent.device_ids?.length
+    ? ent.device_ids
+    : ent.device_id
+      ? [ent.device_id]
+      : [];
+  const defaultAll = !ids.length;
   const deviceChecks = cachedDevices
     .map(
       (d) => `<label class="check compact">
         <input type="checkbox" data-target-dev="${d.id}" ${
-          !defaultAll && ent.device_id === d.id ? "checked" : ""
+          ids.includes(d.id) ? "checked" : ""
         } ${defaultAll ? "disabled" : ""} />
         ${escapeHtml(d.name)}
       </label>`,
     )
     .join("");
-  return `<div class="queue-targets" data-targets-for="${ent.id}">
-    <label class="check compact">
-      <input type="checkbox" data-target-all ${defaultAll ? "checked" : ""} /> Todos
-    </label>
-    ${deviceChecks}
+  return `<div class="queue-targets" data-targets-for="${targetKey}">
+    <span class="meta">Relojes destino</span>
+    <div class="queue-targets-row">
+      <label class="check compact">
+        <input type="checkbox" data-target-all ${defaultAll ? "checked" : ""} /> Todos
+      </label>
+      ${deviceChecks}
+    </div>
   </div>`;
+}
+
+function readQueueTargets(list, entId) {
+  const wrap = list.querySelector(`[data-targets-for="${entId}"]`);
+  if (!wrap) return undefined;
+  const allCb = wrap.querySelector("[data-target-all]");
+  if (allCb?.checked) return [];
+  return [...wrap.querySelectorAll("[data-target-dev]:checked")].map(
+    (cb) => cb.dataset.targetDev,
+  );
+}
+
+function readQueueTargetsForSave(list, entId) {
+  const targets = readQueueTargets(list, entId);
+  if (!targets) return { device_id: null, device_ids: null };
+  if (!targets.length) return { device_id: null, device_ids: null };
+  if (targets.length === 1) return { device_id: targets[0], device_ids: null };
+  return { device_id: null, device_ids: targets };
+}
+
+function parseAlertRuleFields(fd) {
+  return {
+    template: String(fd.get("template") || "").trim() || undefined,
+    priority: fd.get("priority") || "warning",
+    sound: fd.get("sound") === "on",
+    enabled: fd.get("enabled") === "on",
+    interval_sec: intervalSecFromMin(fd.get("interval_min")),
+    min_delta:
+      fd.get("min_delta") !== "" && fd.get("min_delta") != null
+        ? Number(fd.get("min_delta"))
+        : null,
+    when_gt:
+      fd.get("when_gt") !== "" && fd.get("when_gt") != null
+        ? Number(fd.get("when_gt"))
+        : null,
+    when_lt:
+      fd.get("when_lt") !== "" && fd.get("when_lt") != null
+        ? Number(fd.get("when_lt"))
+        : null,
+  };
+}
+
+function renderQueueAlertItem(ent) {
+  const preview = ent.preview || "(sin estado)";
+  const name = ent.friendly_name || ent.entity_id;
+  const rules = formatAlertRules(ent);
+  const enabledBadge = ent.enabled
+    ? `<span class="badge ok">activa</span>`
+    : `<span class="badge">pausada</span>`;
+  return `
+    <li class="queue-alert-item">
+      <div class="queue-alert-head">
+        <div>
+          <strong>${escapeHtml(name)}</strong> ${enabledBadge}
+          <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.device_name || "todos")}</div>
+          <div class="meta queue-alert-rules">${escapeHtml(rules)} · ${escapeHtml(ent.priority || "info")}${ent.sound ? " · sonido" : ""}</div>
+          <div style="margin-top:0.35rem">${escapeHtml(preview)}</div>
+        </div>
+        <button type="button" class="danger secondary" data-del-alert="${ent.id}">Borrar</button>
+      </div>
+      <form class="stack queue-alert-form" data-alert-id="${ent.id}">
+        <label>Texto (template)
+          <input name="template" value="${escapeHtml(ent.template || "")}" />
+        </label>
+        <div class="row">
+          <label>Prioridad
+            <select name="priority">
+              <option value="info" ${ent.priority === "info" ? "selected" : ""}>info</option>
+              <option value="warning" ${ent.priority === "warning" ? "selected" : ""}>warning</option>
+              <option value="critical" ${ent.priority === "critical" ? "selected" : ""}>critical</option>
+            </select>
+          </label>
+          <label class="check">
+            <input name="sound" type="checkbox" ${ent.sound ? "checked" : ""} /> Sonido
+          </label>
+          <label class="check">
+            <input name="enabled" type="checkbox" ${ent.enabled !== false ? "checked" : ""} /> Activa
+          </label>
+        </div>
+        <div class="row">
+          <label>Cada N min
+            <input name="interval_min" type="number" min="1" step="1" placeholder="off" value="${escapeHtml(intervalMinFromSec(ent.interval_sec))}" />
+          </label>
+          <label>Si valor &gt;
+            <input name="when_gt" type="number" step="0.1" placeholder="off" value="${ent.when_gt ?? ""}" />
+          </label>
+          <label>Si valor &lt;
+            <input name="when_lt" type="number" step="0.1" placeholder="off" value="${ent.when_lt ?? ""}" />
+          </label>
+          <label>Cambio mín. Δ
+            <input name="min_delta" type="number" min="0" step="0.1" placeholder="off" value="${ent.min_delta ?? ""}" />
+          </label>
+        </div>
+        ${buildQueueTargetPicker(ent)}
+        <div class="row queue-alert-actions">
+          <button type="submit" class="secondary">Guardar reglas</button>
+          <button type="button" data-send-ent="${ent.id}">Encolar ahora</button>
+        </div>
+        <div class="meta">Último: ${escapeHtml(String(ent.last_value ?? "—"))}${ent.last_sent_at ? ` · ${new Date(ent.last_sent_at).toLocaleString()}` : ""}</div>
+      </form>
+    </li>`;
 }
 
 function readQueueTargets(list, entId) {
@@ -1476,42 +1609,78 @@ async function loadDeviceQueueBoard(deviceId) {
 }
 
 async function loadQueueEntities() {
+  if (!cachedDevices.length) {
+    const { devices } = await api("/panel/api/devices");
+    cachedDevices = devices || [];
+  }
+  const targets = $("#queueAlertTargets");
+  if (targets) {
+    targets.innerHTML = buildQueueTargetPicker({ id: "new" }, "new");
+    bindQueueTargetPickers(targets);
+  }
+
   const { entities } = await api("/panel/api/ha/previews");
   const list = $("#queueEntityList");
   list.innerHTML = "";
   if (!entities.length) {
     const li = document.createElement("li");
-    li.innerHTML = `<div class="meta">No hay entidades mapeadas. Agregalas en la pestaña Home Assistant.</div>`;
+    li.innerHTML = `<div class="meta">No hay alertas todavía. Creá una arriba o mapeá entidades en Home Assistant.</div>`;
     list.appendChild(li);
     return;
   }
   for (const ent of entities) {
+    if (ent.mode !== "notify") continue;
     const li = document.createElement("li");
-    const preview = ent.preview || "(sin estado)";
-    const name = ent.friendly_name || ent.entity_id;
-    li.innerHTML = `
-      <div style="flex:1">
-        <strong>${escapeHtml(name)}</strong>
-        <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)} · ${escapeHtml(ent.device_name || "todos")}</div>
-        <div style="margin-top:0.35rem">${escapeHtml(preview)}</div>
-        ${buildQueueTargetPicker(ent)}
-      </div>
-      <div class="entity-send">
-        <select data-prio-for="${ent.id}">
-          <option value="info">info</option>
-          <option value="warning">warning</option>
-          <option value="critical" selected>critical</option>
-        </select>
-        <button type="button" data-send-ent="${ent.id}">Encolar</button>
-      </div>`;
+    li.innerHTML = renderQueueAlertItem(ent);
     list.appendChild(li);
   }
+  if (!list.children.length) {
+    list.innerHTML = `<li><div class="meta">No hay alertas en modo notify. Las entidades frame están en la pestaña Home Assistant.</div></li>`;
+  }
+
   bindQueueTargetPickers(list);
+  list.querySelectorAll("form.queue-alert-form").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = form.dataset.alertId;
+      const fd = new FormData(form);
+      const deviceTargets = readQueueTargetsForSave(list, id);
+      try {
+        await api(`/panel/api/ha/entities/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            ...parseAlertRuleFields(fd),
+            mode: "notify",
+            ...deviceTargets,
+          }),
+        });
+        setMsg($("#queueMsg"), "Reglas guardadas", "ok");
+        await loadQueueEntities();
+      } catch (err) {
+        setMsg($("#queueMsg"), err.message, "error");
+      }
+    });
+  });
+
+  list.querySelectorAll("[data-del-alert]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("¿Borrar esta alerta?")) return;
+      try {
+        await api(`/panel/api/ha/entities/${btn.dataset.delAlert}`, { method: "DELETE" });
+        setMsg($("#queueMsg"), "Alerta eliminada", "ok");
+        await loadQueueEntities();
+      } catch (err) {
+        setMsg($("#queueMsg"), err.message, "error");
+      }
+    });
+  });
+
   list.querySelectorAll("[data-send-ent]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.sendEnt;
-      const sel = list.querySelector(`[data-prio-for="${id}"]`);
-      const priority = sel ? sel.value : "critical";
+      const form = list.querySelector(`form[data-alert-id="${id}"]`);
+      const fd = form ? new FormData(form) : null;
+      const priority = fd?.get("priority") || "critical";
       const targets = readQueueTargets(list, id);
       if (targets !== undefined && !targets.length && !list.querySelector(`[data-targets-for="${id}"] [data-target-all]`)?.checked) {
         setMsg($("#queueMsg"), "Elegí al menos un reloj o marcá Todos", "error");
@@ -1519,7 +1688,10 @@ async function loadQueueEntities() {
       }
       try {
         btn.disabled = true;
-        const body = { priority, sound: priority === "critical" };
+        const body = {
+          priority,
+          sound: fd?.get("sound") === "on",
+        };
         if (targets !== undefined) body.devices = targets;
         const r = await api(`/panel/api/ha/entities/${id}/send`, {
           method: "POST",
@@ -1581,6 +1753,57 @@ $("#queueDeviceFilter")?.addEventListener("change", () => {
 
 $("#refreshQueueEntities").addEventListener("click", () => {
   loadQueueEntities().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
+});
+
+async function searchQueueHa() {
+  const q = $("#queueAlertEntityId")?.value || "";
+  const { states } = await api(`/panel/api/ha/states?q=${encodeURIComponent(q || "")}`);
+  const list = $("#queueHaStates");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const s of states.slice(0, 20)) {
+    const li = document.createElement("li");
+    li.innerHTML = `<div><strong>${escapeHtml(s.entity_id)}</strong><div class="meta">${escapeHtml(String(s.friendly_name || ""))} = ${escapeHtml(s.state)}</div></div>
+      <button type="button" class="secondary" data-pick-queue="${escapeHtml(s.entity_id)}">Usar</button>`;
+    list.appendChild(li);
+  }
+  list.querySelectorAll("[data-pick-queue]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      $("#queueAlertEntityId").value = btn.dataset.pickQueue;
+      list.innerHTML = "";
+    });
+  });
+}
+
+$("#queueHaPickBtn")?.addEventListener("click", () => {
+  searchQueueHa().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
+});
+
+$("#queueAlertForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const entityId = String(fd.get("entity_id") || "").trim();
+  if (!entityId) return;
+  const deviceTargets = readQueueTargetsForSave($("#queueAlertTargets"), "new");
+  try {
+    await api("/panel/api/ha/entities", {
+      method: "POST",
+      body: JSON.stringify({
+        entity_id: entityId,
+        mode: "notify",
+        icon: "a2867",
+        ...parseAlertRuleFields(fd),
+        ...deviceTargets,
+      }),
+    });
+    setMsg($("#queueMsg"), "Alerta creada", "ok");
+    e.target.reset();
+    e.target.template.value = "{{ name }}: {{ state | round:1 }}{{ unit }}";
+    e.target.enabled.checked = true;
+    await loadQueueEntities();
+  } catch (err) {
+    setMsg($("#queueMsg"), err.message, "error");
+  }
 });
 
 $("#clearQueueBtn").addEventListener("click", async () => {

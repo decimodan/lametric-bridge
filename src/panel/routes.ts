@@ -989,6 +989,7 @@ function registerPanelApi(app: FastifyInstance): void {
         when_gt: z.number().nullable().optional(),
         when_lt: z.number().nullable().optional(),
         device_id: z.string().min(1).nullable().optional(),
+        device_ids: z.array(z.string().min(1).max(64)).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -1014,6 +1015,7 @@ function registerPanelApi(app: FastifyInstance): void {
         when_gt: z.number().nullable().optional(),
         when_lt: z.number().nullable().optional(),
         device_id: z.string().min(1).nullable().optional(),
+        device_ids: z.array(z.string().min(1).max(64)).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
@@ -1059,6 +1061,10 @@ function registerPanelApi(app: FastifyInstance): void {
         parsed.data.device_id === undefined
           ? existing.device_id
           : parsed.data.device_id,
+      device_ids:
+        parsed.data.device_ids === undefined
+          ? existing.device_ids
+          : parsed.data.device_ids,
     });
     return { entity };
   });
