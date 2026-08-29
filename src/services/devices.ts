@@ -135,6 +135,8 @@ export async function resolveDeviceByMac(
   const ip = await resolveMacToIp(device.macAddress, {
     allowSweep: true,
     forceSweep: true,
+    kind: device.kind,
+    hintHost: device.host,
   });
   if (!ip) {
     return {
@@ -294,7 +296,11 @@ async function upsertEnvDevice(input: {
      ON CONFLICT (slug) DO UPDATE SET
        name = EXCLUDED.name,
        kind = EXCLUDED.kind,
-       host = EXCLUDED.host,
+       host = CASE
+         WHEN COALESCE(EXCLUDED.mac_address, devices.mac_address) IS NOT NULL
+         THEN devices.host
+         ELSE EXCLUDED.host
+       END,
        mac_address = COALESCE(EXCLUDED.mac_address, devices.mac_address),
        api_key_enc = EXCLUDED.api_key_enc,
        env_managed = TRUE`,

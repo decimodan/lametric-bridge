@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
+import { lanFetch } from "../adapters/lanFetch.js";
 import { config } from "../config.js";
-import type { Device } from "./devices.js";
+import type { Device, DeviceKind } from "./devices.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,6 +42,51 @@ function lookupMac(table: Map<string, string>, mac: string): string | undefined 
     if (key.toLowerCase() === normalized) return ip;
   }
   return undefined;
+}
+
+function macPlain(mac: string): string | null {
+  const normalized = normalizeMac(mac);
+  return normalized ? normalized.replace(/:/g, "") : null;
+}
+
+async function probeAwtrixIp(ip: string, targetPlain: string): Promise<boolean> {
+  try {
+    const res = await lanFetch(`http://${ip}/api/v1/device`, { timeoutMs: 900 });
+    if (!res.ok) return false;
+    const body = JSON.parse(res.text) as { uid?: string };
+    return body.uid?.toLowerCase() === targetPlain;
+  } catch {
+    return false;
+  }
+}
+
+async function httpSweepForMac(
+  mac: string,
+  kind: DeviceKind | undefined,
+  hintHost?: string,
+): Promise<string | null> {
+  if (kind && kind !== "awtrix") return null;
+  const targetPlain = macPlain(mac);
+  if (!targetPlain) return null;
+
+  const hintIp = hintHost ? hostIp(hintHost) : null;
+  if (hintIp && (await probeAwtrixIp(hintIp, targetPlain))) {
+    return hintIp;
+  }
+
+  const ips = hostsInSubnet(config.lanSubnet);
+  const batchSize = 32;
+  for (let i = 0; i < ips.length; i += batchSize) {
+    const batch = ips.slice(i, i + batchSize);
+    const hits = await Promise.all(
+      batch.map(async (ip) =>
+        (await probeAwtrixIp(ip, targetPlain)) ? ip : null,
+      ),
+    );
+    const found = hits.find(Boolean);
+    if (found) return found;
+  }
+  return null;
 }
 
 function hostIp(host: string): string | null {
@@ -149,7 +195,12 @@ const SWEEP_COOLDOWN_MS = 5 * 60_000;
 
 export async function resolveMacToIp(
   macAddress: string,
-  options: { allowSweep?: boolean; forceSweep?: boolean } = {},
+  options: {
+    allowSweep?: boolean;
+    forceSweep?: boolean;
+    kind?: DeviceKind;
+    hintHost?: string;
+  } = {},
 ): Promise<string | null> {
   const mac = normalizeMac(macAddress);
   if (!mac) return null;
@@ -159,19 +210,22 @@ export async function resolveMacToIp(
   if (ip) return ip;
 
   const allowSweep = options.allowSweep ?? true;
-  if (!allowSweep || process.platform !== "linux") return null;
+  if (allowSweep && process.platform === "linux") {
+    const sweepKey = config.lanSubnet;
+    const lastSweep = lastSweepAt.get(sweepKey) ?? 0;
+    const due =
+      options.forceSweep || Date.now() - lastSweep >= SWEEP_COOLDOWN_MS;
+    if (due) {
+      lastSweepAt.set(sweepKey, Date.now());
+      await pingSweep(config.lanSubnet);
+      table = await readNeighborTable();
+      ip = lookupMac(table, mac);
+      if (ip) return ip;
+    }
+  }
 
-  const sweepKey = config.lanSubnet;
-  const lastSweep = lastSweepAt.get(sweepKey) ?? 0;
-  const due =
-    options.forceSweep || Date.now() - lastSweep >= SWEEP_COOLDOWN_MS;
-  if (!due) return null;
-
-  lastSweepAt.set(sweepKey, Date.now());
-  await pingSweep(config.lanSubnet);
-  table = await readNeighborTable();
-  ip = lookupMac(table, mac);
-  return ip ?? null;
+  // Docker bridge networks often lack LAN ARP entries — probe AWTRIX HTTP API.
+  return httpSweepForMac(mac, options.kind, options.hintHost);
 }
 
 export async function resolveDeviceHost(device: Device): Promise<Device> {
@@ -186,7 +240,10 @@ export async function resolveDeviceHost(device: Device): Promise<Device> {
     return { ...device, host: cached.host, macAddress };
   }
 
-  const ip = await resolveMacToIp(macAddress);
+  const ip = await resolveMacToIp(macAddress, {
+    kind: device.kind,
+    hintHost: device.host,
+  });
   if (!ip) return { ...device, macAddress };
 
   const host = applyResolvedIp(device, ip);
