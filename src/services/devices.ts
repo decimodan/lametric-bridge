@@ -285,7 +285,9 @@ async function upsertEnvDevice(input: {
   const id = existing.rows[0]?.id ?? uuid();
   const macAddress = input.macAddress
     ? normalizeMac(input.macAddress)
-    : existing.rows[0]?.mac_address ?? null;
+    : existing.rows[0]?.mac_address
+      ? normalizeMac(String(existing.rows[0].mac_address))
+      : null;
   await query(
     `INSERT INTO devices (id, slug, name, kind, host, mac_address, api_key_enc, env_managed, last_seen)
      VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8)
@@ -317,7 +319,7 @@ export async function syncEnvDevices(): Promise<void> {
       kind: "lametric",
       host: config.lametricDeviceIp,
       apiKey: config.lametricApiKey,
-      macAddress: config.lametricDeviceMac || undefined,
+      macAddress: normalizeMac(config.lametricDeviceMac) || undefined,
     });
   }
   if (config.awtrixBaseUrl) {
@@ -330,7 +332,7 @@ export async function syncEnvDevices(): Promise<void> {
         config.awtrixUser && config.awtrixPass
           ? `${config.awtrixUser}:${config.awtrixPass}`
           : "",
-      macAddress: config.awtrixMac || undefined,
+      macAddress: normalizeMac(config.awtrixMac) || undefined,
     });
   }
 }

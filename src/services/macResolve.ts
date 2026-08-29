@@ -7,15 +7,40 @@ import type { Device } from "./devices.js";
 const execFileAsync = promisify(execFile);
 
 const MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
+const MAC_PLAIN_RE = /^[0-9a-f]{12}$/i;
 
 export function isValidMac(mac: string): boolean {
-  return MAC_RE.test(mac.trim());
+  const normalized = normalizeMac(mac);
+  return normalized !== null;
 }
 
+/** Always returns lowercase `aa:bb:cc:dd:ee:ff`, regardless of input casing/separators. */
 export function normalizeMac(mac: string): string | null {
-  const cleaned = mac.trim().toLowerCase().replace(/-/g, ":");
-  if (!MAC_RE.test(cleaned)) return null;
-  return cleaned;
+  const trimmed = mac.trim();
+  if (!trimmed) return null;
+
+  const lower = trimmed.toLowerCase();
+  const colonForm = lower.replace(/-/g, ":");
+  if (MAC_RE.test(colonForm)) return colonForm;
+
+  const plain = lower.replace(/[^0-9a-f]/g, "");
+  if (MAC_PLAIN_RE.test(plain)) {
+    return plain.match(/.{2}/g)!.join(":");
+  }
+
+  return null;
+}
+
+function lookupMac(table: Map<string, string>, mac: string): string | undefined {
+  const normalized = normalizeMac(mac);
+  if (!normalized) return undefined;
+  const direct = table.get(normalized);
+  if (direct) return direct;
+  // Belt-and-suspenders: neighbor tables may use mixed case keys.
+  for (const [key, ip] of table) {
+    if (key.toLowerCase() === normalized) return ip;
+  }
+  return undefined;
 }
 
 function hostIp(host: string): string | null {
@@ -130,7 +155,7 @@ export async function resolveMacToIp(
   if (!mac) return null;
 
   let table = await readNeighborTable();
-  let ip = table.get(mac);
+  let ip = lookupMac(table, mac);
   if (ip) return ip;
 
   const allowSweep = options.allowSweep ?? true;
@@ -145,25 +170,28 @@ export async function resolveMacToIp(
   lastSweepAt.set(sweepKey, Date.now());
   await pingSweep(config.lanSubnet);
   table = await readNeighborTable();
-  ip = table.get(mac);
+  ip = lookupMac(table, mac);
   return ip ?? null;
 }
 
 export async function resolveDeviceHost(device: Device): Promise<Device> {
-  if (!device.macAddress) return device;
+  const macAddress = device.macAddress
+    ? normalizeMac(device.macAddress)
+    : null;
+  if (!macAddress) return device;
 
   const now = Date.now();
   const cached = resolveCache.get(device.id);
   if (cached && now - cached.at < CACHE_TTL_MS) {
-    return { ...device, host: cached.host };
+    return { ...device, host: cached.host, macAddress };
   }
 
-  const ip = await resolveMacToIp(device.macAddress);
-  if (!ip) return device;
+  const ip = await resolveMacToIp(macAddress);
+  if (!ip) return { ...device, macAddress };
 
   const host = applyResolvedIp(device, ip);
   resolveCache.set(device.id, { host, at: now });
-  return { ...device, host };
+  return { ...device, host, macAddress };
 }
 
 export function seedResolveCache(deviceId: string, host: string): void {
