@@ -234,6 +234,43 @@ main {
   flex-shrink: 0;
 }
 
+.clock-gauge-dial {
+  touch-action: none;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.clock-gauge-dial:active,
+.clock-gauge-dial--active {
+  cursor: grabbing;
+}
+
+.clock-gauge-dial--active .clock-gauge-progress {
+  transition: none;
+}
+
+.clock-gauge-dial-hint {
+  position: absolute;
+  bottom: 0.15rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  white-space: nowrap;
+}
+
+.clock-gauge-dial:hover .clock-gauge-dial-hint,
+.clock-gauge-dial--active .clock-gauge-dial-hint {
+  opacity: 0.85;
+}
+
 .clock-gauge-ring svg {
   width: 100%;
   height: 100%;

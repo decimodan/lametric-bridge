@@ -199,6 +199,57 @@ const GAUGE_GRADIENTS = [
 const GAUGE_SLOTS = 3;
 const GAUGE_RADIUS = 70;
 const GAUGE_CIRC = 2 * Math.PI * GAUGE_RADIUS;
+const gaugeStatusCache = new Map();
+
+function pointerToBrightness(clientX, clientY, rect) {
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  let angle = Math.atan2(clientY - cy, clientX - cx) + Math.PI / 2;
+  if (angle < 0) angle += 2 * Math.PI;
+  return Math.round(Math.max(0, Math.min(100, (angle / (2 * Math.PI)) * 100)));
+}
+
+function pointerOnRing(clientX, clientY, rect) {
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dist = Math.hypot(clientX - cx, clientY - cy);
+  const r = rect.width / 2;
+  return dist >= r * 0.5 && dist <= r * 1.05;
+}
+
+function updateGaugeBrightnessUi(deviceId, percent) {
+  const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const progress = document.querySelector(`[data-gauge-progress="${deviceId}"]`);
+  const valueEl = document.querySelector(`[data-gauge-value="${deviceId}"]`);
+  const dial = document.querySelector(`[data-gauge-dial="${deviceId}"]`);
+  if (progress) {
+    progress.setAttribute("stroke-dashoffset", gaugeProgressOffset(p).toFixed(2));
+  }
+  if (valueEl) valueEl.textContent = String(p);
+  if (dial) dial.setAttribute("aria-valuenow", String(p));
+  const range = document.querySelector(`[data-bright-range="${deviceId}"]`);
+  const label = document.querySelector(`[data-bright-val="${deviceId}"]`);
+  if (range) range.value = String(p);
+  if (label) label.textContent = String(p);
+}
+
+async function commitGaugeBrightness(deviceId, percent) {
+  const cached = gaugeStatusCache.get(deviceId);
+  const autoBrightness = Boolean(cached?.autoBrightness);
+  const r = await api(`/panel/api/devices/${deviceId}/brightness`, {
+    method: "PATCH",
+    body: JSON.stringify({ brightness: percent, autoBrightness }),
+  });
+  setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
+  if (r.ok) {
+    gaugeStatusCache.set(deviceId, {
+      ...(cached || { ok: true }),
+      brightness: percent,
+      autoBrightness,
+    });
+  }
+  return r;
+}
 
 function gaugeIconSvg(kind) {
   if (kind === "awtrix") {
@@ -263,9 +314,19 @@ function buildClockGauge(index, device, status) {
   const offset = gaugeProgressOffset(brightness ?? 0);
 
   article.dataset.deviceId = device.id;
+  const dialValue = brightness ?? 0;
   article.innerHTML = `
     <p class="clock-gauge-label">${escapeHtml(device.name)}</p>
-    <div class="clock-gauge-ring">
+    <div
+      class="clock-gauge-ring clock-gauge-dial"
+      data-gauge-dial="${device.id}"
+      role="slider"
+      aria-label="Brillo ${escapeHtml(device.name)}"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-valuenow="${dialValue}"
+      tabindex="0"
+    >
       <svg viewBox="0 0 160 160" aria-hidden="true">
         <defs>
           <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -288,6 +349,7 @@ function buildClockGauge(index, device, status) {
         <span class="clock-gauge-value" data-gauge-value="${device.id}">${brightness ?? "—"}</span>
         <span class="clock-gauge-unit">brillo</span>
       </div>
+      <span class="clock-gauge-dial-hint">arrastrá</span>
     </div>
     <p class="clock-gauge-meta" data-gauge-meta="${device.id}">
       <span class="clock-gauge-status">
@@ -305,9 +367,11 @@ function buildClockGauge(index, device, status) {
 }
 
 function updateGaugeStatus(deviceId, status) {
+  gaugeStatusCache.set(deviceId, status || { ok: false });
   const progress = document.querySelector(`[data-gauge-progress="${deviceId}"]`);
   const valueEl = document.querySelector(`[data-gauge-value="${deviceId}"]`);
   const metaEl = document.querySelector(`[data-gauge-meta="${deviceId}"]`);
+  const dial = document.querySelector(`[data-gauge-dial="${deviceId}"]`);
   if (!progress && !valueEl) return;
 
   const device = cachedDevices.find((d) => d.id === deviceId);
@@ -319,10 +383,12 @@ function updateGaugeStatus(deviceId, status) {
   const kindLabel = device.kind === "awtrix" ? "Ulanzi" : "LaMetric";
   const autoLabel = status?.autoBrightness ? " · auto" : "";
 
-  if (progress && brightness != null) {
-    progress.setAttribute("stroke-dashoffset", gaugeProgressOffset(brightness).toFixed(2));
+  if (brightness != null && !dial?.classList.contains("clock-gauge-dial--active")) {
+    updateGaugeBrightnessUi(deviceId, brightness);
+  } else if (brightness == null && valueEl) {
+    valueEl.textContent = "—";
   }
-  if (valueEl) valueEl.textContent = brightness ?? "—";
+  if (dial && brightness != null) dial.setAttribute("aria-valuenow", String(brightness));
   if (metaEl) {
     metaEl.innerHTML = `
       <span class="clock-gauge-status">
@@ -366,21 +432,110 @@ function bindGaugeActions(container) {
   });
 }
 
+function bindGaugeDials(container) {
+  container.querySelectorAll("[data-gauge-dial]").forEach((dial) => {
+    const deviceId = dial.dataset.gaugeDial;
+    let dragging = false;
+    let moved = false;
+    let lastPercent = null;
+
+    const setFromPointer = (clientX, clientY) => {
+      const rect = dial.getBoundingClientRect();
+      if (!pointerOnRing(clientX, clientY, rect)) return null;
+      const percent = pointerToBrightness(clientX, clientY, rect);
+      lastPercent = percent;
+      updateGaugeBrightnessUi(deviceId, percent);
+      return percent;
+    };
+
+    const finishDrag = async () => {
+      dial.classList.remove("clock-gauge-dial--active");
+      if (dragging && moved) {
+        dial.closest(".clock-gauge")?.setAttribute("data-gauge-dragged", "1");
+      }
+      if (dragging && lastPercent != null) {
+        try {
+          await commitGaugeBrightness(deviceId, lastPercent);
+        } catch (err) {
+          setMsg($("#deviceMsg"), err.message, "error");
+        }
+      }
+      dragging = false;
+      moved = false;
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+
+    const onPointerMove = (e) => {
+      if (!dragging) return;
+      if (setFromPointer(e.clientX, e.clientY) != null) moved = true;
+    };
+
+    const onPointerUp = () => {
+      void finishDrag();
+    };
+
+    dial.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = dial.getBoundingClientRect();
+      if (!pointerOnRing(e.clientX, e.clientY, rect)) return;
+      dragging = true;
+      moved = false;
+      dial.classList.add("clock-gauge-dial--active");
+      dial.setPointerCapture(e.pointerId);
+      if (setFromPointer(e.clientX, e.clientY) != null) moved = true;
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
+    });
+
+    dial.addEventListener("click", (e) => e.stopPropagation());
+
+    dial.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      e.stopPropagation();
+      const current = Number(dial.getAttribute("aria-valuenow") || 0);
+      const step = e.shiftKey ? 10 : 1;
+      const next =
+        e.key === "ArrowUp"
+          ? Math.min(100, current + step)
+          : Math.max(0, current - step);
+      updateGaugeBrightnessUi(deviceId, next);
+      commitGaugeBrightness(deviceId, next).catch((err) => {
+        setMsg($("#deviceMsg"), err.message, "error");
+      });
+    });
+  });
+}
+
 function bindGaugeClicks(container) {
   container.querySelectorAll(".clock-gauge").forEach((gauge, index) => {
+    if (!gauge.dataset.deviceId && !gauge.classList.contains("clock-gauge--empty")) return;
     gauge.classList.add("clock-gauge--clickable");
-    gauge.setAttribute("role", "button");
-    gauge.setAttribute("tabindex", "0");
+    if (gauge.dataset.deviceId) {
+      gauge.setAttribute("role", "button");
+      gauge.setAttribute("tabindex", "0");
+    }
     const open = () => {
+      if (gauge.dataset.gaugeDragged === "1") {
+        gauge.removeAttribute("data-gauge-dragged");
+        return;
+      }
       const deviceId = gauge.dataset.deviceId;
       if (deviceId) openDeviceDetail(deviceId);
       else openAddDeviceSlot(index);
     };
     gauge.addEventListener("click", (e) => {
       if (e.target.closest("button")) return;
+      if (e.target.closest(".clock-gauge-dial")) return;
       open();
     });
     gauge.addEventListener("keydown", (e) => {
+      if (e.target.closest(".clock-gauge-dial")) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         open();
@@ -400,13 +555,16 @@ async function refreshClockGauges() {
     if (device) {
       try {
         status = await api(`/panel/api/devices/${device.id}/status`);
+        gaugeStatusCache.set(device.id, status);
       } catch {
         status = { ok: false };
+        gaugeStatusCache.set(device.id, status);
       }
     }
     container.appendChild(buildClockGauge(i, device, status));
   }
   bindGaugeActions(container);
+  bindGaugeDials(container);
   bindGaugeClicks(container);
 }
 
