@@ -358,11 +358,7 @@ function buildClockGauge(index, device, status) {
       </span>
       · ${escapeHtml(kindLabel)}${autoLabel}
       <br /><span class="meta">${escapeHtml(device.slug)} · ${escapeHtml(device.host)}${device.macAddress ? ` · ${escapeHtml(device.macAddress)}` : ""}</span>
-    </p>
-    <div class="clock-gauge-actions">
-      <button type="button" class="secondary" data-gauge-test="${device.id}">Probar</button>
-      <button type="button" data-gauge-identify="${device.id}">Identificar</button>
-    </div>`;
+    </p>`;
   return article;
 }
 
@@ -400,37 +396,6 @@ function updateGaugeStatus(deviceId, status) {
   }
 }
 
-function bindGaugeActions(container) {
-  container.querySelectorAll("[data-gauge-test]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        const r = await api(`/panel/api/devices/${btn.dataset.gaugeTest}/test`, {
-          method: "POST",
-          body: "{}",
-        });
-        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
-      } catch (err) {
-        setMsg($("#deviceMsg"), err.message, "error");
-      }
-    });
-  });
-
-  container.querySelectorAll("[data-gauge-identify]").forEach((btn) => {
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        const r = await api(`/panel/api/devices/${btn.dataset.gaugeIdentify}/identify`, {
-          method: "POST",
-          body: "{}",
-        });
-        setMsg($("#deviceMsg"), r.detail, r.ok ? "ok" : "error");
-      } catch (err) {
-        setMsg($("#deviceMsg"), err.message, "error");
-      }
-    });
-  });
-}
 
 function bindGaugeDials(container) {
   container.querySelectorAll("[data-gauge-dial]").forEach((dial) => {
@@ -563,7 +528,6 @@ async function refreshClockGauges() {
     }
     container.appendChild(buildClockGauge(i, device, status));
   }
-  bindGaugeActions(container);
   bindGaugeDials(container);
   bindGaugeClicks(container);
 }
