@@ -62,6 +62,14 @@ import {
   saveAutomation,
   setAutomationEnabled,
 } from "../services/cardAutomations.js";
+import {
+  deleteSensorCard,
+  getSensorCard,
+  listSensorCards,
+  listSensorCardsLive,
+  publicSensorCard,
+  saveSensorCard,
+} from "../services/sensorCards.js";
 import { LAMETRIC_SOUNDS } from "../services/sounds.js";
 import {
   deleteDevice,
@@ -132,6 +140,75 @@ function registerPanelApi(app: FastifyInstance): void {
   app.get("/panel/api/logs", async () => ({
     logs: await listNotifyLog(100),
   }));
+
+  app.get("/panel/api/sensor-cards", async () => ({
+    cards: (await listSensorCards()).map(publicSensorCard),
+  }));
+
+  app.get("/panel/api/sensor-cards/live", async (request, reply) => {
+    try {
+      return { cards: await listSensorCardsLive() };
+    } catch (err) {
+      return reply.code(502).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  app.post("/panel/api/sensor-cards", async (request, reply) => {
+    const parsed = z
+      .object({
+        entityId: z.string().min(1).max(128),
+        title: z.string().min(1).max(64),
+        description: z.string().max(512).optional(),
+        sortOrder: z.number().int().min(0).optional(),
+        enabled: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const card = await saveSensorCard(parsed.data);
+    return { card: publicSensorCard(card) };
+  });
+
+  app.patch("/panel/api/sensor-cards/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const existing = await getSensorCard(id);
+    if (!existing) return reply.code(404).send({ error: "Not found" });
+    const parsed = z
+      .object({
+        entityId: z.string().min(1).max(128).optional(),
+        title: z.string().min(1).max(64).optional(),
+        description: z.string().max(512).optional(),
+        sortOrder: z.number().int().min(0).optional(),
+        enabled: z.boolean().optional(),
+      })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: parsed.error.flatten() });
+    }
+    const card = await saveSensorCard({
+      id,
+      entityId: parsed.data.entityId ?? existing.entityId,
+      title: parsed.data.title ?? existing.title,
+      description:
+        parsed.data.description === undefined
+          ? existing.description
+          : parsed.data.description,
+      sortOrder: parsed.data.sortOrder ?? existing.sortOrder,
+      enabled: parsed.data.enabled ?? existing.enabled,
+    });
+    return { card: publicSensorCard(card) };
+  });
+
+  app.delete("/panel/api/sensor-cards/:id", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    if (!(await deleteSensorCard(id))) {
+      return reply.code(404).send({ error: "Not found" });
+    }
+    return { ok: true };
+  });
 
   app.get("/panel/api/icons", async (request, reply) => {
     const query = request.query as {

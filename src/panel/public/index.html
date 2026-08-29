@@ -32,6 +32,46 @@
       <div id="deviceHomeView" class="device-home">
         <div class="clock-gauges" id="clockGauges" aria-label="Relojes conectados"></div>
 
+        <section class="sensor-home">
+          <header class="sensor-home-head">
+            <div>
+              <h2>Sensores</h2>
+              <p class="hint">Tus sensores de Home Assistant con valor en vivo y una explicación.</p>
+            </div>
+            <button type="button" id="addSensorCardBtn" class="secondary">+ Agregar sensor</button>
+          </header>
+          <div class="sensor-gauges" id="sensorGauges" aria-label="Sensores"></div>
+        </section>
+
+        <article class="card" id="sensorCardEditor" hidden>
+          <header class="card-head">
+            <h2 id="sensorCardEditorTitle">Agregar sensor</h2>
+            <p class="hint">Elegí la entidad, un título corto y qué mide / para qué sirve.</p>
+          </header>
+          <form id="sensorCardForm" class="stack">
+            <input type="hidden" name="id" id="sensorCardId" />
+            <label>Entidad HA
+              <input name="entityId" id="sensorCardEntityId" required placeholder="sensor.temperatura_salon" />
+            </label>
+            <label>Título en la tarjeta
+              <input name="title" id="sensorCardTitle" required placeholder="Temperatura salón" maxlength="64" />
+            </label>
+            <label>Explicación
+              <textarea name="description" id="sensorCardDescription" rows="2" placeholder="Temperatura ambiente del living. Alerta si supera 28°C." maxlength="512"></textarea>
+            </label>
+            <label class="check">
+              <input name="enabled" type="checkbox" id="sensorCardEnabled" checked />
+              Visible en inicio
+            </label>
+            <div class="row">
+              <button type="submit" class="btn-lime">Guardar</button>
+              <button type="button" id="sensorCardCancel" class="secondary">Cancelar</button>
+              <button type="button" id="sensorCardDelete" class="danger" hidden>Eliminar</button>
+            </div>
+            <p class="msg" id="sensorCardMsg"></p>
+          </form>
+        </article>
+
         <div class="widget-grid status-grid">
           <article class="card card-dark status-card">
             <p class="card-label">Relojes</p>

@@ -97,8 +97,10 @@ $$("#tabs button").forEach((btn) => {
       showDeviceHome();
       loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
       startGaugePolling();
+      startSensorPolling();
     } else {
       stopGaugePolling();
+      stopSensorPolling();
       showDeviceHome();
     }
     if (btn.dataset.tab === "cards") {
@@ -372,6 +374,208 @@ function buildClockGauge(index, device, status) {
   return article;
 }
 
+const SENSOR_GRADIENTS = [
+  { from: "#34d399", to: "#22d3ee", glow: "rgba(52, 211, 153, 0.5)" },
+  { from: "#fbbf24", to: "#f97316", glow: "rgba(251, 191, 36, 0.5)" },
+  { from: "#a78bfa", to: "#ec4899", glow: "rgba(167, 139, 250, 0.5)" },
+  { from: "#60a5fa", to: "#818cf8", glow: "rgba(96, 165, 250, 0.5)" },
+];
+
+function sensorDomainIcon(domain) {
+  const d = domain || "sensor";
+  if (d === "binary_sensor") {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>`;
+  }
+  if (d === "climate") {
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v13"/><path d="M8 16a4 4 0 108 0"/></svg>`;
+  }
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4v2"/><path d="M6 8a6 6 0 1012 0 6 6 0 00-12 0z"/></svg>`;
+}
+
+function formatSensorDisplay(card) {
+  const state = card.state;
+  if (state == null || state === "unavailable" || state === "unknown") {
+    return { value: "—", unit: "", state: "off", progress: 0 };
+  }
+  const domain = card.domain || card.entityId?.split(".")[0] || "sensor";
+  if (domain === "binary_sensor") {
+    const on = ["on", "true", "open", "detected", "home", "wet", "occupied"].includes(
+      String(state).toLowerCase(),
+    );
+    return { value: on ? "ON" : "OFF", unit: "", state: on ? "on" : "off", progress: on ? 100 : 8 };
+  }
+  const num = Number(String(state).replace(",", "."));
+  if (Number.isFinite(num)) {
+    let progress = 40;
+    if (card.unit === "%") progress = Math.max(0, Math.min(100, num));
+    else if (num >= 0 && num <= 100) progress = num;
+    const value = Number.isInteger(num) ? String(num) : String(Math.round(num * 10) / 10);
+    return { value, unit: card.unit || "", state: "on", progress };
+  }
+  const text = String(state);
+  const value = text.length > 7 ? `${text.slice(0, 6)}…` : text;
+  return { value, unit: "", state: "on", progress: 55 };
+}
+
+function buildSensorGauge(card, index) {
+  const grad = SENSOR_GRADIENTS[index % SENSOR_GRADIENTS.length];
+  const gradId = `sensorGrad${index}`;
+  const display = formatSensorDisplay(card);
+  const offset = gaugeProgressOffset(display.progress);
+  const article = document.createElement("article");
+  article.className = "sensor-gauge clock-gauge clock-gauge--clickable";
+  article.dataset.sensorId = card.id;
+  article.style.setProperty("--gauge-glow", grad.glow);
+
+  article.innerHTML = `
+    <p class="clock-gauge-label">${escapeHtml(card.title)}</p>
+    <div class="clock-gauge-ring">
+      <svg viewBox="0 0 160 160" aria-hidden="true">
+        <defs>
+          <linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="${grad.from}" />
+            <stop offset="100%" stop-color="${grad.to}" />
+          </linearGradient>
+        </defs>
+        <circle class="clock-gauge-track" cx="80" cy="80" r="${GAUGE_RADIUS}" />
+        <circle
+          class="clock-gauge-progress"
+          cx="80" cy="80" r="${GAUGE_RADIUS}"
+          stroke="url(#${gradId})"
+          stroke-dasharray="${GAUGE_CIRC.toFixed(2)}"
+          stroke-dashoffset="${offset.toFixed(2)}"
+          data-sensor-progress="${card.id}"
+        />
+      </svg>
+      <div class="clock-gauge-center">
+        <span class="clock-gauge-icon sensor-gauge-icon">${sensorDomainIcon(card.domain)}</span>
+        <span class="clock-gauge-value sensor-gauge-value" data-sensor-value="${card.id}">${escapeHtml(display.value)}</span>
+        <span class="clock-gauge-unit">${escapeHtml(display.unit || card.domain || "sensor")}</span>
+      </div>
+    </div>
+    <p class="clock-gauge-meta sensor-gauge-meta">
+      <span class="clock-gauge-status">
+        <span class="clock-gauge-dot" data-state="${display.state}" data-sensor-dot="${card.id}"></span>
+        <strong data-sensor-state-label="${card.id}">${escapeHtml(card.friendlyName || card.entityId)}</strong>
+      </span>
+      <br /><span class="sensor-gauge-desc">${escapeHtml(card.description || "Sin explicación")}</span>
+      <br /><span class="meta">${escapeHtml(card.entityId)}</span>
+    </p>`;
+  return article;
+}
+
+function buildEmptySensorGauge() {
+  const article = document.createElement("article");
+  article.className = "sensor-gauge clock-gauge clock-gauge--empty clock-gauge--clickable";
+  article.dataset.addSensor = "1";
+  article.innerHTML = `
+    <p class="clock-gauge-label">Sensor</p>
+    <div class="clock-gauge-ring">
+      <svg viewBox="0 0 160 160" aria-hidden="true">
+        <circle class="clock-gauge-track" cx="80" cy="80" r="${GAUGE_RADIUS}" />
+      </svg>
+      <div class="clock-gauge-center">
+        <span class="clock-gauge-icon sensor-gauge-icon">+</span>
+        <span class="clock-gauge-value">—</span>
+        <span class="clock-gauge-unit">agregar</span>
+      </div>
+    </div>
+    <p class="clock-gauge-meta">Elegí un sensor de HA y agregá una explicación</p>`;
+  return article;
+}
+
+function updateSensorGaugeCard(card) {
+  const display = formatSensorDisplay(card);
+  const valueEl = document.querySelector(`[data-sensor-value="${card.id}"]`);
+  const progress = document.querySelector(`[data-sensor-progress="${card.id}"]`);
+  const dot = document.querySelector(`[data-sensor-dot="${card.id}"]`);
+  if (valueEl) valueEl.textContent = display.value;
+  if (progress) {
+    progress.setAttribute("stroke-dashoffset", gaugeProgressOffset(display.progress).toFixed(2));
+  }
+  if (dot) dot.setAttribute("data-state", display.state);
+}
+
+let sensorPollTimer = null;
+
+async function refreshSensorGauges() {
+  const container = $("#sensorGauges");
+  if (!container) return;
+  try {
+    const { cards } = await api("/panel/api/sensor-cards/live");
+    container.innerHTML = "";
+    if (!cards?.length) {
+      container.appendChild(buildEmptySensorGauge());
+    } else {
+      cards.forEach((card, i) => container.appendChild(buildSensorGauge(card, i)));
+      container.appendChild(buildEmptySensorGauge());
+    }
+    bindSensorGaugeClicks(container);
+  } catch {
+    container.innerHTML = `<p class="meta">Home Assistant no configurado o sin sensores en inicio.</p>`;
+    container.appendChild(buildEmptySensorGauge());
+    bindSensorGaugeClicks(container);
+  }
+}
+
+function bindSensorGaugeClicks(container) {
+  container.querySelectorAll("[data-sensor-id]").forEach((el) => {
+    el.addEventListener("click", async () => {
+      const id = el.dataset.sensorId;
+      try {
+        const { cards } = await api("/panel/api/sensor-cards/live");
+        const card = (cards || []).find((c) => c.id === id);
+        if (card) openSensorCardEditor(card);
+      } catch (err) {
+        setMsg($("#sensorCardMsg"), err.message, "error");
+      }
+    });
+  });
+  container.querySelectorAll("[data-add-sensor]").forEach((el) => {
+    el.addEventListener("click", () => openSensorCardEditor());
+  });
+}
+
+function startSensorPolling() {
+  stopSensorPolling();
+  sensorPollTimer = setInterval(() => {
+    if (!$("#tab-device")?.classList.contains("active")) return;
+    api("/panel/api/sensor-cards/live")
+      .then(({ cards }) => {
+        for (const card of cards || []) updateSensorGaugeCard(card);
+      })
+      .catch(() => {});
+  }, 15000);
+}
+
+function stopSensorPolling() {
+  if (sensorPollTimer) {
+    clearInterval(sensorPollTimer);
+    sensorPollTimer = null;
+  }
+}
+
+function hideSensorCardEditor() {
+  const editor = $("#sensorCardEditor");
+  if (editor) editor.hidden = true;
+  setMsg($("#sensorCardMsg"), "", "");
+}
+
+function openSensorCardEditor(card, entityPrefill) {
+  const editor = $("#sensorCardEditor");
+  if (!editor) return;
+  editor.hidden = false;
+  $("#sensorCardEditorTitle").textContent = card ? "Editar sensor" : "Agregar sensor";
+  $("#sensorCardId").value = card?.id || "";
+  $("#sensorCardEntityId").value = card?.entityId || entityPrefill?.entity_id || "";
+  $("#sensorCardTitle").value = card?.title || entityPrefill?.name || "";
+  $("#sensorCardDescription").value = card?.description || "";
+  $("#sensorCardEnabled").checked = card?.enabled !== false;
+  $("#sensorCardDelete").hidden = !card?.id;
+  setMsg($("#sensorCardMsg"), "", "");
+  editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function updateGaugeStatus(deviceId, status) {
   gaugeStatusCache.set(deviceId, status || { ok: false });
   const progress = document.querySelector(`[data-gauge-progress="${deviceId}"]`);
@@ -580,6 +784,7 @@ async function loadDevices() {
   cachedDevices = devices || [];
   fillDeviceSelects();
   await refreshClockGauges();
+  await refreshSensorGauges();
 
   if (!selectedDeviceDetailId) return;
 
@@ -1378,7 +1583,8 @@ function renderHaSensorChips(browser, deviceId, filter = "") {
     chip.innerHTML = `
       <strong>${escapeHtml(ent.name)}</strong>
       <span class="meta">${escapeHtml(ent.entity_id)}</span>
-      <span class="ha-sensor-state">${escapeHtml(ent.state ?? "—")}${ent.unit ? ` ${escapeHtml(ent.unit)}` : ""}</span>`;
+      <span class="ha-sensor-state">${escapeHtml(ent.state ?? "—")}${ent.unit ? ` ${escapeHtml(ent.unit)}` : ""}</span>
+      <span class="ha-sensor-pin">+ inicio</span>`;
     chip.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData(
         "application/x-ha-entity",
@@ -1389,7 +1595,19 @@ function renderHaSensorChips(browser, deviceId, filter = "") {
       chip.classList.add("dragging");
     });
     chip.addEventListener("dragend", () => chip.classList.remove("dragging"));
-    chip.addEventListener("click", () => applyHaEntityToTargets(browser, ent, "fill"));
+    chip.addEventListener("click", (e) => {
+      if (e.target.closest(".ha-sensor-pin")) {
+        e.stopPropagation();
+        $$("#tabs button").forEach((b) => b.classList.remove("active"));
+        $$(".panel").forEach((p) => p.classList.remove("active"));
+        $(`#tabs [data-tab="device"]`)?.classList.add("active");
+        $("#tab-device")?.classList.add("active");
+        showDeviceHome();
+        openSensorCardEditor(null, ent);
+        return;
+      }
+      applyHaEntityToTargets(browser, ent, "fill");
+    });
     list.appendChild(chip);
   }
 }
@@ -2523,12 +2741,60 @@ async function loadLogs() {
 
 $("#refreshLogs").addEventListener("click", () => loadLogs());
 
+$("#addSensorCardBtn")?.addEventListener("click", () => openSensorCardEditor());
+
+$("#sensorCardCancel")?.addEventListener("click", () => hideSensorCardEditor());
+
+$("#sensorCardDelete")?.addEventListener("click", async () => {
+  const id = $("#sensorCardId")?.value;
+  if (!id || !confirm("¿Eliminar esta tarjeta de sensor?")) return;
+  try {
+    await api(`/panel/api/sensor-cards/${id}`, { method: "DELETE" });
+    hideSensorCardEditor();
+    await refreshSensorGauges();
+    setMsg($("#sensorCardMsg"), "Eliminado", "ok");
+  } catch (err) {
+    setMsg($("#sensorCardMsg"), err.message, "error");
+  }
+});
+
+$("#sensorCardForm")?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const id = String(fd.get("id") || "").trim();
+  const payload = {
+    entityId: String(fd.get("entityId") || "").trim(),
+    title: String(fd.get("title") || "").trim(),
+    description: String(fd.get("description") || "").trim(),
+    enabled: fd.get("enabled") === "on",
+  };
+  try {
+    if (id) {
+      await api(`/panel/api/sensor-cards/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+    } else {
+      await api("/panel/api/sensor-cards", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    }
+    hideSensorCardEditor();
+    await refreshSensorGauges();
+    setMsg($("#sensorCardMsg"), "Guardado", "ok");
+  } catch (err) {
+    setMsg($("#sensorCardMsg"), err.message, "error");
+  }
+});
+
 (async function init() {
   await loadSoundCatalog();
   await refreshStatus();
   showDeviceHome();
   await loadDevices();
   startGaugePolling();
+  startSensorPolling();
   await loadConnectionCatalog();
   await loadCards();
   await loadAutomations();

@@ -173,6 +173,70 @@ main {
   padding: 0.75rem 1.25rem 2.5rem;
 }
 
+/* Sensor dashboard — circular cards (home) */
+.sensor-home {
+  margin: 1.25rem 0;
+}
+
+.sensor-home-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.sensor-home-head h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+}
+
+.sensor-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.sensor-gauge-icon {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.sensor-gauge-desc {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+#sensorCardEditor textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.ha-sensor-pin {
+  margin-top: 0.2rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--neon);
+}
+
+@media (max-width: 900px) {
+  .sensor-gauges {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .sensor-gauges {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Clock dashboard — circular gauges (home) */
 .clock-gauges {
   display: grid;
