@@ -1,6 +1,7 @@
 import { query, type NotifyLogRow } from "../db/index.js";
 import { dispatchNotification } from "../adapters/clocks.js";
 import { config } from "../config.js";
+import { getDevice, listDevices } from "./devices.js";
 import { priorityRank, type Message } from "./render.js";
 
 type QueueItem = {
@@ -9,15 +10,33 @@ type QueueItem = {
   attempts: number;
 };
 
-const MAX_ATTEMPTS = 3;
+type DeviceQueueState = {
+  queue: QueueItem[];
+  current: QueueItem | null;
+  processing: boolean;
+  nextProcessAt: number;
+};
 
-const queue: QueueItem[] = [];
+const UNASSIGNED_KEY = "__unassigned__";
+
+const deviceQueues = new Map<string, DeviceQueueState>();
 let timer: NodeJS.Timeout | null = null;
-let processing = false;
-let nextProcessAt = 0;
-let current: QueueItem | null = null;
 
 const rateBuckets = new Map<string, { count: number; windowStart: number }>();
+
+function getOrCreateDeviceQueue(deviceId: string): DeviceQueueState {
+  let state = deviceQueues.get(deviceId);
+  if (!state) {
+    state = {
+      queue: [],
+      current: null,
+      processing: false,
+      nextProcessAt: 0,
+    };
+    deviceQueues.set(deviceId, state);
+  }
+  return state;
+}
 
 export function checkRateLimit(key: string): boolean {
   const now = Date.now();
@@ -63,8 +82,8 @@ export async function listNotifyLog(limit = 50): Promise<NotifyLogRow[]> {
   return res.rows;
 }
 
-function sortQueue(): void {
-  queue.sort((a, b) => {
+function sortQueue(items: QueueItem[]): void {
+  items.sort((a, b) => {
     const pr =
       priorityRank(a.message.priority) - priorityRank(b.message.priority);
     if (pr !== 0) return pr;
@@ -72,9 +91,45 @@ function sortQueue(): void {
   });
 }
 
-export function enqueue(message: Message): void {
-  queue.push({ message, enqueuedAt: Date.now(), attempts: 0 });
-  sortQueue();
+async function resolveEnqueueTargets(message: Message): Promise<string[]> {
+  if (message.deviceIds?.length) {
+    const ids: string[] = [];
+    for (const ref of message.deviceIds) {
+      const dev = await getDevice(ref);
+      if (dev && !ids.includes(dev.id)) ids.push(dev.id);
+    }
+    return ids;
+  }
+  if (message.deviceId) {
+    const dev = await getDevice(message.deviceId);
+    return dev ? [dev.id] : [];
+  }
+  const all = await listDevices();
+  return all.map((d) => d.id);
+}
+
+export async function enqueue(message: Message): Promise<void> {
+  const targetIds = await resolveEnqueueTargets(message);
+  const base = { ...message };
+  delete base.deviceIds;
+
+  if (!targetIds.length) {
+    const state = getOrCreateDeviceQueue(UNASSIGNED_KEY);
+    state.queue.push({ message: base, enqueuedAt: Date.now(), attempts: 0 });
+    sortQueue(state.queue);
+    ensureWorker();
+    return;
+  }
+
+  for (const deviceId of targetIds) {
+    const state = getOrCreateDeviceQueue(deviceId);
+    state.queue.push({
+      message: { ...base, deviceId },
+      enqueuedAt: Date.now(),
+      attempts: 0,
+    });
+    sortQueue(state.queue);
+  }
   ensureWorker();
 }
 
@@ -91,7 +146,31 @@ function serializeItem(item: QueueItem, position: number) {
   };
 }
 
-export function listQueue(): Array<{
+function queueEntriesForFilter(deviceId?: string): Array<{
+  deviceKey: string;
+  item: QueueItem;
+}> {
+  const entries: Array<{ deviceKey: string; item: QueueItem }> = [];
+  for (const [deviceKey, state] of deviceQueues) {
+    if (deviceId && deviceKey !== deviceId) continue;
+    if (state.current) {
+      entries.push({ deviceKey, item: state.current });
+    }
+    for (const item of state.queue) {
+      entries.push({ deviceKey, item });
+    }
+  }
+  entries.sort((a, b) => {
+    const pr =
+      priorityRank(a.item.message.priority) -
+      priorityRank(b.item.message.priority);
+    if (pr !== 0) return pr;
+    return a.item.enqueuedAt - b.item.enqueuedAt;
+  });
+  return entries;
+}
+
+export function listQueue(deviceId?: string): Array<{
   text: string;
   icon?: string;
   priority: string;
@@ -101,11 +180,16 @@ export function listQueue(): Array<{
   position: number;
   attempts: number;
 }> {
-  sortQueue();
-  return queue.map((item, index) => serializeItem(item, index + 1));
+  const pending = queueEntriesForFilter(deviceId).filter(
+    ({ deviceKey, item }) => {
+      const state = deviceQueues.get(deviceKey);
+      return state?.current !== item;
+    },
+  );
+  return pending.map(({ item }, index) => serializeItem(item, index + 1));
 }
 
-export function getCurrentQueueItem(): {
+export function getCurrentQueueItem(deviceId?: string): {
   text: string;
   icon?: string;
   priority: string;
@@ -115,39 +199,82 @@ export function getCurrentQueueItem(): {
   position: number;
   attempts: number;
 } | null {
-  if (!current) return null;
-  return serializeItem(current, 0);
+  if (deviceId) {
+    const state = deviceQueues.get(deviceId);
+    if (!state?.current) return null;
+    return serializeItem(state.current, 0);
+  }
+
+  const currents = [...deviceQueues.entries()]
+    .filter(([, state]) => state.current)
+    .map(([key, state]) => ({ key, item: state.current! }))
+    .sort(
+      (a, b) =>
+        priorityRank(a.item.message.priority) -
+        priorityRank(b.item.message.priority),
+    );
+
+  if (!currents.length) return null;
+  return serializeItem(currents[0].item, 0);
 }
 
-export function clearQueue(): number {
-  const n = queue.length;
-  queue.length = 0;
+export function getCurrentQueueItems(): Array<{
+  text: string;
+  icon?: string;
+  priority: string;
+  source: string;
+  deviceId?: string;
+  enqueuedAt: number;
+  position: number;
+  attempts: number;
+}> {
+  return [...deviceQueues.entries()]
+    .filter(([, state]) => state.current)
+    .map(([, state]) => serializeItem(state.current!, 0));
+}
+
+export function clearQueue(deviceId?: string): number {
+  if (!deviceId) {
+    let n = 0;
+    for (const state of deviceQueues.values()) {
+      n += state.queue.length + (state.current ? 1 : 0);
+      state.queue.length = 0;
+      state.current = null;
+    }
+    return n;
+  }
+
+  const state = deviceQueues.get(deviceId);
+  if (!state) return 0;
+  const n = state.queue.length + (state.current ? 1 : 0);
+  state.queue.length = 0;
+  state.current = null;
   return n;
 }
 
 function displayPauseMs(message: Message, ok: boolean): number {
   if (!ok) {
-    // Retry sooner on failure, but avoid tight loops.
     return Math.max(config.queueIntervalMs, 1_500);
   }
   const lifetime = message.lifetime ?? 5_000;
   const cycles = Math.max(1, message.cycles ?? 2);
-  // Pace so LaMetric can finish showing a notification before the next one.
   return Math.min(Math.max(config.queueIntervalMs, lifetime * cycles), 20_000);
 }
 
-/** Errors that will not succeed on retry (DND, auth, bad config). */
 function isPermanentFailure(detail: string): boolean {
   return /only notifications with priority|authorization is required|not configured|modo silencioso|unknown device|no clocks configured/i.test(
     detail,
   );
 }
 
-async function processOne(): Promise<number> {
-  const item = queue.shift();
+async function processOneForDevice(
+  deviceKey: string,
+  state: DeviceQueueState,
+): Promise<number> {
+  const item = state.queue.shift();
   if (!item) return config.queueIntervalMs;
 
-  current = item;
+  state.current = item;
   item.attempts += 1;
 
   try {
@@ -179,33 +306,38 @@ async function processOne(): Promise<number> {
 
     const permanent = !ok && isPermanentFailure(detail);
     if (!ok && !permanent && item.attempts < MAX_ATTEMPTS) {
-      queue.push(item);
-      sortQueue();
+      state.queue.push(item);
+      sortQueue(state.queue);
     }
 
     if (permanent) return Math.max(config.queueIntervalMs, 400);
     return displayPauseMs(item.message, ok);
   } finally {
-    current = null;
+    state.current = null;
   }
 }
+
+const MAX_ATTEMPTS = 3;
 
 function ensureWorker(): void {
   if (timer) return;
   timer = setInterval(() => {
     void (async () => {
-      if (processing) return;
-      if (queue.length === 0) return;
-      if (Date.now() < nextProcessAt) return;
-      processing = true;
-      try {
-        const pause = await processOne();
-        nextProcessAt = Date.now() + pause;
-      } catch (err) {
-        console.error("queue worker error", err);
-        nextProcessAt = Date.now() + Math.max(config.queueIntervalMs, 1_500);
-      } finally {
-        processing = false;
+      for (const [deviceKey, state] of deviceQueues) {
+        if (state.processing) continue;
+        if (state.queue.length === 0) continue;
+        if (Date.now() < state.nextProcessAt) continue;
+        state.processing = true;
+        try {
+          const pause = await processOneForDevice(deviceKey, state);
+          state.nextProcessAt = Date.now() + pause;
+        } catch (err) {
+          console.error(`queue worker error (${deviceKey})`, err);
+          state.nextProcessAt =
+            Date.now() + Math.max(config.queueIntervalMs, 1_500);
+        } finally {
+          state.processing = false;
+        }
       }
     })();
   }, Math.min(200, config.queueIntervalMs));
@@ -215,6 +347,15 @@ export function startQueue(): void {
   ensureWorker();
 }
 
-export function queueSize(): number {
-  return queue.length + (current ? 1 : 0);
+export function queueSize(deviceId?: string): number {
+  if (deviceId) {
+    const state = deviceQueues.get(deviceId);
+    if (!state) return 0;
+    return state.queue.length + (state.current ? 1 : 0);
+  }
+  let n = 0;
+  for (const state of deviceQueues.values()) {
+    n += state.queue.length + (state.current ? 1 : 0);
+  }
+  return n;
 }

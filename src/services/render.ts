@@ -10,8 +10,10 @@ export type Message = {
   source: string;
   appId?: string;
   channelId?: string;
-  /** Device id or slug. Omit to send to every configured clock. */
+  /** Device id or slug. Omit (with no deviceIds) to send to every configured clock. */
   deviceId?: string;
+  /** Multiple device ids or slugs. Takes precedence over deviceId when set. */
+  deviceIds?: string[];
 };
 
 export type LametricFrame = {

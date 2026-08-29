@@ -157,6 +157,7 @@ function showDeviceHome() {
   const detail = $("#deviceDetailView");
   if (home) home.hidden = false;
   if (detail) detail.hidden = true;
+  stopDeviceQueuePolling();
 }
 
 function openDeviceDetail(deviceId) {
@@ -169,9 +170,12 @@ function openDeviceDetail(deviceId) {
   $("#deviceDetailSubtitle").textContent = `${device.slug} · ${device.host}`;
   $("#deviceDetailView .two-col").hidden = false;
   $("#deviceAddSection").hidden = true;
+  $("#deviceQueueSection").hidden = false;
   const notifySel = $("#notifyDevice");
   if (notifySel) notifySel.value = deviceId;
   loadDevices().catch((e) => setMsg($("#deviceMsg"), e.message, "error"));
+  loadDeviceQueueBoard(deviceId).catch(() => {});
+  startDeviceQueuePolling();
 }
 
 function openAddDeviceSlot(slotIndex) {
@@ -182,6 +186,8 @@ function openAddDeviceSlot(slotIndex) {
   $("#deviceDetailSubtitle").textContent = "Sin configurar — agregá un reloj en este slot";
   $("#deviceDetailView .two-col").hidden = true;
   $("#deviceAddSection").hidden = false;
+  $("#deviceQueueSection").hidden = true;
+  stopDeviceQueuePolling();
   setMsg($("#deviceMsg"), "", "");
 }
 
@@ -1249,6 +1255,118 @@ $("#cardForm").addEventListener("submit", async (e) => {
 
 /* Queue / send entities */
 let queuePollTimer = null;
+let deviceQueuePollTimer = null;
+
+function queueDeviceLabel(deviceId) {
+  if (!deviceId) return "todos";
+  const d = cachedDevices.find((x) => x.id === deviceId || x.slug === deviceId);
+  return d ? d.name : deviceId;
+}
+
+function buildQueueTargetPicker(ent) {
+  const defaultAll = !ent.device_id;
+  const deviceChecks = cachedDevices
+    .map(
+      (d) => `<label class="check compact">
+        <input type="checkbox" data-target-dev="${d.id}" ${
+          !defaultAll && ent.device_id === d.id ? "checked" : ""
+        } ${defaultAll ? "disabled" : ""} />
+        ${escapeHtml(d.name)}
+      </label>`,
+    )
+    .join("");
+  return `<div class="queue-targets" data-targets-for="${ent.id}">
+    <label class="check compact">
+      <input type="checkbox" data-target-all ${defaultAll ? "checked" : ""} /> Todos
+    </label>
+    ${deviceChecks}
+  </div>`;
+}
+
+function readQueueTargets(list, entId) {
+  const wrap = list.querySelector(`[data-targets-for="${entId}"]`);
+  if (!wrap) return undefined;
+  const allCb = wrap.querySelector("[data-target-all]");
+  if (allCb?.checked) return [];
+  return [...wrap.querySelectorAll("[data-target-dev]:checked")].map(
+    (cb) => cb.dataset.targetDev,
+  );
+}
+
+function bindQueueTargetPickers(list) {
+  list.querySelectorAll(".queue-targets").forEach((wrap) => {
+    const allCb = wrap.querySelector("[data-target-all]");
+    const devCbs = [...wrap.querySelectorAll("[data-target-dev]")];
+    allCb?.addEventListener("change", () => {
+      const all = allCb.checked;
+      devCbs.forEach((cb) => {
+        cb.disabled = all;
+        if (all) cb.checked = false;
+      });
+    });
+    devCbs.forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked && allCb) {
+          allCb.checked = false;
+          devCbs.forEach((other) => {
+            other.disabled = false;
+          });
+        }
+      });
+    });
+  });
+}
+
+function fillQueueDeviceFilter() {
+  const sel = $("#queueDeviceFilter");
+  if (!sel) return;
+  const current = sel.value || "all";
+  sel.innerHTML = `<option value="all">Todos los relojes</option>${cachedDevices
+    .map(
+      (d) =>
+        `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`,
+    )
+    .join("")}`;
+  if ([...sel.options].some((o) => o.value === current)) {
+    sel.value = current;
+  }
+}
+
+function renderQueueLanes(items, lanePrefix, showDevice = false) {
+  for (const p of ["critical", "warning", "info"]) {
+    const lane = $(`#${lanePrefix}-${p}`);
+    if (!lane) continue;
+    lane.innerHTML = "";
+    const laneItems = (items || []).filter((i) => i.priority === p);
+    for (const item of laneItems) {
+      const li = document.createElement("li");
+      const deviceMeta =
+        showDevice && item.deviceId
+          ? ` · ${escapeHtml(queueDeviceLabel(item.deviceId))}`
+          : "";
+      li.innerHTML = `
+        <strong>#${item.position} ${escapeHtml(item.text)}</strong>
+        <div class="meta">${escapeHtml(item.source)}${deviceMeta} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
+      lane.appendChild(li);
+    }
+  }
+}
+
+function formatQueueCurrentLabel(data, showDevice = false) {
+  if (data.currents?.length) {
+    return data.currents
+      .map(
+        (c) =>
+          `[${c.priority}] ${c.text}${showDevice || c.deviceId ? ` → ${queueDeviceLabel(c.deviceId)}` : ""}`,
+      )
+      .join(" · ");
+  }
+  const cur = data.current;
+  if (!cur) return "Enviando: —";
+  const deviceSuffix =
+    showDevice || cur.deviceId ? ` → ${queueDeviceLabel(cur.deviceId)}` : "";
+  return `Enviando: [${cur.priority}] ${cur.text}${deviceSuffix}`;
+}
 
 function startQueuePolling() {
   stopQueuePolling();
@@ -1262,6 +1380,29 @@ function stopQueuePolling() {
     clearInterval(queuePollTimer);
     queuePollTimer = null;
   }
+}
+
+function startDeviceQueuePolling() {
+  stopDeviceQueuePolling();
+  deviceQueuePollTimer = setInterval(() => {
+    if (selectedDeviceDetailId && !$("#deviceDetailView")?.hidden) {
+      loadDeviceQueueBoard(selectedDeviceDetailId).catch(() => {});
+    }
+  }, 2000);
+}
+
+function stopDeviceQueuePolling() {
+  if (deviceQueuePollTimer) {
+    clearInterval(deviceQueuePollTimer);
+    deviceQueuePollTimer = null;
+  }
+}
+
+async function loadDeviceQueueBoard(deviceId) {
+  const data = await api(`/panel/api/devices/${deviceId}/queue`);
+  $("#deviceQueueSizeLabel").textContent = `(${data.size})`;
+  $("#deviceQueueCurrentLabel").textContent = formatQueueCurrentLabel(data, false);
+  renderQueueLanes(data.items, "device-lane", false);
 }
 
 async function loadQueueEntities() {
@@ -1283,6 +1424,7 @@ async function loadQueueEntities() {
         <strong>${escapeHtml(name)}</strong>
         <div class="meta">${escapeHtml(ent.entity_id)} · ${escapeHtml(ent.mode)} · ${escapeHtml(ent.device_name || "todos")}</div>
         <div style="margin-top:0.35rem">${escapeHtml(preview)}</div>
+        ${buildQueueTargetPicker(ent)}
       </div>
       <div class="entity-send">
         <select data-prio-for="${ent.id}">
@@ -1294,19 +1436,30 @@ async function loadQueueEntities() {
       </div>`;
     list.appendChild(li);
   }
+  bindQueueTargetPickers(list);
   list.querySelectorAll("[data-send-ent]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.sendEnt;
       const sel = list.querySelector(`[data-prio-for="${id}"]`);
       const priority = sel ? sel.value : "critical";
+      const targets = readQueueTargets(list, id);
+      if (targets !== undefined && !targets.length && !list.querySelector(`[data-targets-for="${id}"] [data-target-all]`)?.checked) {
+        setMsg($("#queueMsg"), "Elegí al menos un reloj o marcá Todos", "error");
+        return;
+      }
       try {
         btn.disabled = true;
+        const body = { priority, sound: priority === "critical" };
+        if (targets !== undefined) body.devices = targets;
         const r = await api(`/panel/api/ha/entities/${id}/send`, {
           method: "POST",
-          body: JSON.stringify({ priority, sound: priority === "critical" }),
+          body: JSON.stringify(body),
         });
         setMsg($("#queueMsg"), `${r.detail}: ${r.text || ""}`, "ok");
         await loadQueueBoard();
+        if (selectedDeviceDetailId) {
+          loadDeviceQueueBoard(selectedDeviceDetailId).catch(() => {});
+        }
         refreshStatus();
       } catch (err) {
         setMsg($("#queueMsg"), err.message, "error");
@@ -1318,25 +1471,16 @@ async function loadQueueEntities() {
 }
 
 async function loadQueueBoard() {
-  const data = await api("/panel/api/queue");
+  const filterVal = $("#queueDeviceFilter")?.value || "all";
+  const qs =
+    filterVal !== "all"
+      ? `?device=${encodeURIComponent(filterVal)}`
+      : "";
+  const data = await api(`/panel/api/queue${qs}`);
+  const showDevice = filterVal === "all";
   $("#queueSizeLabel").textContent = `(${data.size})`;
-  const cur = data.current;
-  $("#queueCurrentLabel").textContent = cur
-    ? `Enviando: [${cur.priority}] ${cur.text}${cur.deviceId ? ` → ${cur.deviceId}` : ""}`
-    : "Enviando: —";
-
-  for (const p of ["critical", "warning", "info"]) {
-    const lane = $(`#lane-${p}`);
-    lane.innerHTML = "";
-    const items = (data.items || []).filter((i) => i.priority === p);
-    for (const item of items) {
-      const li = document.createElement("li");
-      li.innerHTML = `
-        <strong>#${item.position} ${escapeHtml(item.text)}</strong>
-        <div class="meta">${escapeHtml(item.source)}${item.deviceId ? ` · ${escapeHtml(item.deviceId)}` : ""} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
-      lane.appendChild(li);
-    }
-  }
+  $("#queueCurrentLabel").textContent = formatQueueCurrentLabel(data, showDevice);
+  renderQueueLanes(data.items, "lane", showDevice);
 
   const recent = $("#queueRecentList");
   recent.innerHTML = "";
@@ -1352,9 +1496,18 @@ async function loadQueueBoard() {
 }
 
 async function loadQueueTab() {
+  if (!cachedDevices.length) {
+    const { devices } = await api("/panel/api/devices");
+    cachedDevices = devices || [];
+  }
+  fillQueueDeviceFilter();
   await loadQueueEntities();
   await loadQueueBoard();
 }
+
+$("#queueDeviceFilter")?.addEventListener("change", () => {
+  loadQueueBoard().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
+});
 
 $("#refreshQueueEntities").addEventListener("click", () => {
   loadQueueEntities().catch((e) => setMsg($("#queueMsg"), e.message, "error"));
@@ -1362,12 +1515,38 @@ $("#refreshQueueEntities").addEventListener("click", () => {
 
 $("#clearQueueBtn").addEventListener("click", async () => {
   try {
-    const r = await api("/panel/api/queue", { method: "DELETE" });
+    const filterVal = $("#queueDeviceFilter")?.value || "all";
+    const qs =
+      filterVal !== "all"
+        ? `?device=${encodeURIComponent(filterVal)}`
+        : "";
+    const r = await api(`/panel/api/queue${qs}`, { method: "DELETE" });
     setMsg($("#queueMsg"), `Cola vaciada (${r.cleared})`, "ok");
     await loadQueueBoard();
+    if (selectedDeviceDetailId) {
+      loadDeviceQueueBoard(selectedDeviceDetailId).catch(() => {});
+    }
     refreshStatus();
   } catch (err) {
     setMsg($("#queueMsg"), err.message, "error");
+  }
+});
+
+$("#clearDeviceQueueBtn")?.addEventListener("click", async () => {
+  if (!selectedDeviceDetailId) return;
+  try {
+    const r = await api(
+      `/panel/api/queue?device=${encodeURIComponent(selectedDeviceDetailId)}`,
+      { method: "DELETE" },
+    );
+    setMsg($("#deviceMsg"), `Cola vaciada (${r.cleared})`, "ok");
+    await loadDeviceQueueBoard(selectedDeviceDetailId);
+    refreshStatus();
+    if ($("#tab-queue")?.classList.contains("active")) {
+      loadQueueBoard().catch(() => {});
+    }
+  } catch (err) {
+    setMsg($("#deviceMsg"), err.message, "error");
   }
 });
 

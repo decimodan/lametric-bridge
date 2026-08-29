@@ -320,7 +320,7 @@ async function emitEntity(
   if (!text) return false;
 
   if (mapping.mode === "notify") {
-    enqueue({
+    await enqueue({
       text,
       icon: mapping.icon,
       priority: mapping.priority ?? "info",
@@ -402,7 +402,7 @@ async function handleCardAutomations(
       continue;
     }
 
-    enqueue({
+    await enqueue({
       text,
       icon: card.icon,
       priority: card.priority,
@@ -463,6 +463,7 @@ export async function enqueueHaEntity(
   entityIdOrRowId: string,
   priority: "info" | "warning" | "critical" = "info",
   sound = false,
+  targetDevices?: string[] | null,
 ): Promise<{ ok: boolean; detail: string; text?: string; queue?: number }> {
   const byId = await query<HaEntityRow>(
     "SELECT * FROM ha_entities WHERE id = $1 OR entity_id = $2",
@@ -493,13 +494,25 @@ export async function enqueueHaEntity(
     return { ok: false, detail: "Rendered template is empty" };
   }
 
-  enqueue({
+  let deviceId = mapping.device_id ?? undefined;
+  let deviceIds: string[] | undefined;
+  if (targetDevices !== undefined && targetDevices !== null) {
+    if (targetDevices.length === 0) {
+      deviceId = undefined;
+    } else {
+      deviceId = undefined;
+      deviceIds = targetDevices;
+    }
+  }
+
+  await enqueue({
     text,
     icon: mapping.icon,
     priority,
     sound,
     source: `panel:ha:${mapping.entity_id}`,
-    deviceId: mapping.device_id ?? undefined,
+    deviceId,
+    deviceIds,
   });
   await markEntitySent(mapping.id, state.state);
 

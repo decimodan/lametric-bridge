@@ -29,6 +29,7 @@ const notifySchema = z
     lifetime: z.number().int().positive().optional(),
     cycles: z.number().int().positive().optional(),
     device: z.string().min(1).max(64).optional(),
+    devices: z.array(z.string().min(1).max(64)).optional(),
   })
   .refine((b) => Boolean(b.card || b.text), {
     message: "Provide text or card",
@@ -46,6 +47,7 @@ const webhookSchema = z.object({
   lifetime: z.number().int().positive().optional(),
   cycles: z.number().int().positive().optional(),
   device: z.string().min(1).max(64).optional(),
+  devices: z.array(z.string().min(1).max(64)).optional(),
   /** Optional structured vars for connection automations / card templates. */
   name: z.string().max(256).optional(),
   hot_free: z.string().max(32).optional(),
@@ -146,7 +148,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "Provide text or card" });
     }
 
-    enqueue({
+    await enqueue({
       text,
       icon,
       priority: (priority ?? "info") as Priority,
@@ -155,7 +157,8 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
       cycles: body.cycles,
       source,
       appId: caller.id,
-      deviceId: body.device,
+      deviceId: body.devices?.length ? undefined : body.device,
+      deviceIds: body.devices?.length ? body.devices : undefined,
     });
 
     return reply.code(202).send({ accepted: true, queue: queueSize() });
@@ -236,7 +239,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
         .filter(Boolean)
         .join(":");
 
-      enqueue({
+      await enqueue({
         text,
         icon,
         priority: (priority ?? "info") as Priority,
@@ -245,7 +248,8 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
         cycles: body.cycles,
         source,
         appId: caller.id,
-        deviceId: body.device,
+        deviceId: body.devices?.length ? undefined : body.device,
+        deviceIds: body.devices?.length ? body.devices : undefined,
       });
     } else if (!text) {
       text = event ?? "ok";
@@ -322,7 +326,7 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
 
     // No matching rules: still enqueue a short default so wiring is testable.
     if (automationHits === 0) {
-      enqueue({
+      await enqueue({
         text: vars.text,
         icon: "a2305",
         priority: "warning",

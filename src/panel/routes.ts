@@ -76,6 +76,7 @@ import {
   clearQueue,
   enqueue,
   getCurrentQueueItem,
+  getCurrentQueueItems,
   listNotifyLog,
   listQueue,
   logNotify,
@@ -150,16 +151,50 @@ function registerPanelApi(app: FastifyInstance): void {
     }
   });
 
-  app.get("/panel/api/queue", async () => ({
-    size: queueSize(),
-    current: getCurrentQueueItem(),
-    items: listQueue(),
-    recent: await listNotifyLog(20),
-  }));
+  app.get("/panel/api/queue", async (request) => {
+    const query = request.query as { device?: string };
+    let deviceFilter: string | undefined;
+    if (query.device && query.device !== "all") {
+      const dev = await getDevice(query.device);
+      deviceFilter = dev?.id;
+    }
+    const filtered = Boolean(deviceFilter);
+    return {
+      size: queueSize(deviceFilter),
+      current: filtered
+        ? getCurrentQueueItem(deviceFilter)
+        : getCurrentQueueItem(),
+      currents: filtered ? undefined : getCurrentQueueItems(),
+      items: listQueue(deviceFilter),
+      recent: await listNotifyLog(20),
+      deviceId: deviceFilter ?? null,
+    };
+  });
 
-  app.delete("/panel/api/queue", async () => ({
-    cleared: clearQueue(),
-  }));
+  app.delete("/panel/api/queue", async (request) => {
+    const query = request.query as { device?: string };
+    let deviceFilter: string | undefined;
+    if (query.device && query.device !== "all") {
+      const dev = await getDevice(query.device);
+      deviceFilter = dev?.id;
+    }
+    return {
+      cleared: clearQueue(deviceFilter),
+      deviceId: deviceFilter ?? null,
+    };
+  });
+
+  app.get("/panel/api/devices/:id/queue", async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const dev = await getDevice(id);
+    if (!dev) return reply.code(404).send({ error: "Not found" });
+    return {
+      size: queueSize(dev.id),
+      current: getCurrentQueueItem(dev.id),
+      items: listQueue(dev.id),
+      device: publicDevice(dev),
+    };
+  });
 
   app.get("/panel/api/devices", async () => ({
     devices: (await listDevices()).map(publicDevice),
@@ -742,7 +777,7 @@ function registerPanelApi(app: FastifyInstance): void {
     }
 
     const text = renderCardText(card, vars);
-    enqueue({
+    await enqueue({
       text: text || card.text,
       icon: card.icon,
       priority: card.priority,
@@ -1023,6 +1058,7 @@ function registerPanelApi(app: FastifyInstance): void {
       .object({
         priority: z.enum(["info", "warning", "critical"]).optional(),
         sound: z.boolean().optional(),
+        devices: z.array(z.string().min(1).max(64)).optional(),
       })
       .safeParse(request.body ?? {});
     if (!parsed.success) {
@@ -1033,6 +1069,7 @@ function registerPanelApi(app: FastifyInstance): void {
         id,
         parsed.data.priority ?? "info",
         parsed.data.sound ?? false,
+        parsed.data.devices,
       );
       if (!result.ok) return reply.code(400).send(result);
       return result;

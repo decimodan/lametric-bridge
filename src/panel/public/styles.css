@@ -912,6 +912,39 @@ code {
   font-weight: 500;
 }
 
+.queue-device-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--muted-on-dark);
+}
+
+.queue-device-filter select {
+  min-width: 9rem;
+}
+
+.queue-toolbar-actions {
+  gap: 0.65rem;
+  align-items: flex-end;
+}
+
+.queue-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin-top: 0.45rem;
+}
+
+.queue-targets .check.compact {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+#deviceQueueSection {
+  margin-top: 0.85rem;
+}
+
 .entity-send {
   display: flex;
   flex-wrap: wrap;

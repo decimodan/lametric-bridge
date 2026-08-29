@@ -122,6 +122,28 @@
           </article>
         </div>
 
+        <article class="card card-dark" id="deviceQueueSection">
+          <div class="row card-toolbar">
+            <h2>Cola de mensajes <span class="meta" id="deviceQueueSizeLabel">(0)</span></h2>
+            <button type="button" id="clearDeviceQueueBtn" class="danger secondary">Vaciar cola</button>
+          </div>
+          <p class="meta current-send" id="deviceQueueCurrentLabel">Enviando: —</p>
+          <div class="priority-board" id="devicePriorityBoard">
+            <div class="priority-lane" data-priority="critical">
+              <header>critical</header>
+              <ul class="lane-list" id="device-lane-critical"></ul>
+            </div>
+            <div class="priority-lane" data-priority="warning">
+              <header>warning</header>
+              <ul class="lane-list" id="device-lane-warning"></ul>
+            </div>
+            <div class="priority-lane" data-priority="info">
+              <header>info</header>
+              <ul class="lane-list" id="device-lane-info"></ul>
+            </div>
+          </div>
+        </article>
+
         <article class="card" id="deviceAddSection" hidden>
           <header class="card-head">
             <h2>Agregar reloj</h2>
@@ -369,7 +391,15 @@
           <article class="card card-dark">
             <div class="row card-toolbar">
               <h2>Cola <span class="meta" id="queueSizeLabel">(0)</span></h2>
-              <button type="button" id="clearQueueBtn" class="danger">Vaciar cola</button>
+              <div class="row queue-toolbar-actions">
+                <label class="queue-device-filter">
+                  Reloj
+                  <select id="queueDeviceFilter">
+                    <option value="all">Todos los relojes</option>
+                  </select>
+                </label>
+                <button type="button" id="clearQueueBtn" class="danger">Vaciar cola</button>
+              </div>
             </div>
             <p class="meta current-send" id="queueCurrentLabel">Enviando: —</p>
             <div class="priority-board" id="priorityBoard">

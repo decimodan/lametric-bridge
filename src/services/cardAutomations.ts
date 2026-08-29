@@ -507,7 +507,7 @@ export async function enqueueConnectionRules(opts: {
       const vars = { ...opts.vars, event: ev };
       const rendered = renderCardText(card, vars);
       if (!rendered) continue;
-      enqueue({
+      await enqueue({
         text: rendered,
         icon: card.icon,
         priority: card.priority,
