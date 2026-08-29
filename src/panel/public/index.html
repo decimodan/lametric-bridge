@@ -388,15 +388,34 @@
               <p class="hint">Mapeá una entidad HA con reglas de disparo y destino.</p>
             </header>
             <form id="queueAlertForm" class="stack">
+              <div class="ha-device-browser" id="queueDeviceBrowser" data-drop-entity="#queueAlertEntityId" data-drop-template="#queueAlertForm [name=template]">
+                <div class="row card-toolbar">
+                  <h3>Equipos HA</h3>
+                  <button type="button" class="secondary" data-ha-devices-refresh>Actualizar</button>
+                </div>
+                <div class="row">
+                  <label class="grow">Equipo
+                    <select data-ha-device-select>
+                      <option value="">Elegí un equipo…</option>
+                    </select>
+                  </label>
+                  <label class="grow">Filtrar sensores
+                    <input data-ha-device-filter placeholder="temp, batería…" />
+                  </label>
+                </div>
+                <p class="hint">Arrastrá un sensor al campo entidad o al template. También podés hacer clic.</p>
+                <div class="ha-sensor-chips" data-ha-sensor-list></div>
+                <p class="meta" data-ha-device-empty hidden>Sin sensores para este equipo.</p>
+              </div>
               <div class="row">
                 <label>Entidad HA
-                  <input name="entity_id" id="queueAlertEntityId" placeholder="sensor.temperatura" required />
+                  <input name="entity_id" id="queueAlertEntityId" class="drop-target" placeholder="sensor.temperatura" required />
                 </label>
-                <button type="button" id="queueHaPickBtn" class="secondary">Buscar en HA</button>
+                <button type="button" id="queueHaPickBtn" class="secondary">Buscar texto</button>
               </div>
               <ul id="queueHaStates" class="list compact"></ul>
               <label>Texto (template)
-                <input name="template" value="{{ name }}: {{ state | round:1 }}{{ unit }}" />
+                <input name="template" class="drop-target" value="{{ name }}: {{ state | round:1 }}{{ unit }}" />
               </label>
               <div class="row">
                 <label>Prioridad
@@ -537,10 +556,28 @@
 
         <article class="card">
           <header class="card-head">
-            <h2>Buscar entidades</h2>
+            <h2>Equipos y sensores</h2>
+            <p class="hint">Elegí un equipo de HA y arrastrá sensores al formulario de la derecha.</p>
           </header>
-          <div class="row">
-            <input id="haSearch" placeholder="Buscar entidad…" />
+          <div class="ha-device-browser" id="haDeviceBrowser" data-drop-entity="#haEntityForm [name=entity_id]" data-drop-template="#haEntityForm [name=template]">
+            <div class="row card-toolbar">
+              <button type="button" class="secondary" data-ha-devices-refresh>Actualizar equipos</button>
+            </div>
+            <div class="row">
+              <label class="grow">Equipo
+                <select data-ha-device-select>
+                  <option value="">Elegí un equipo…</option>
+                </select>
+              </label>
+              <label class="grow">Filtrar
+                <input data-ha-device-filter placeholder="temp, batería…" />
+              </label>
+            </div>
+            <div class="ha-sensor-chips" data-ha-sensor-list></div>
+            <p class="meta" data-ha-device-empty hidden>Sin sensores para este equipo.</p>
+          </div>
+          <div class="row" style="margin-top:0.75rem">
+            <input id="haSearch" placeholder="Buscar entidad por texto…" />
             <button type="button" id="haSearchBtn" class="secondary">Buscar</button>
           </div>
           <ul id="haStates" class="list compact"></ul>
@@ -553,7 +590,7 @@
         </header>
         <form id="haEntityForm" class="stack">
           <label>Entity ID
-            <input name="entity_id" required placeholder="sensor.temperature" />
+            <input name="entity_id" class="drop-target" required placeholder="sensor.temperature" />
           </label>
           <label>Modo
             <select name="mode">
@@ -562,7 +599,7 @@
             </select>
           </label>
           <label>Template
-            <input name="template" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
+            <input name="template" class="drop-target" value="{{ name }}: {{ state | round:2 }}{{ unit }}" />
           </label>
           <p class="hint">Variables: <code>name</code>, <code>state</code>, <code>unit</code>, <code>entity_id</code>. Filtros: <code>{{ state | round:2 }}</code>, <code>{{ state | fixed:2 }}</code>, <code>{{ state | int }}</code>.</p>
           <label>Icon

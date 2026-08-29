@@ -18,6 +18,7 @@ import {
   fetchHaStates,
   getHaConfig,
   haStatus,
+  listHaDeviceGroups,
   listHaEntities,
   previewHaEntities,
   restartHomeAssistant,
@@ -945,6 +946,23 @@ function registerPanelApi(app: FastifyInstance): void {
   });
 
   app.post("/panel/api/ha/test", async () => testHaConnection());
+
+  app.get("/panel/api/ha/devices", async (request, reply) => {
+    try {
+      const query = request.query as { q?: string; domains?: string };
+      const domains = query.domains
+        ? query.domains.split(",").map((d) => d.trim()).filter(Boolean)
+        : ["sensor", "binary_sensor", "switch", "light", "climate", "cover", "number"];
+      return await listHaDeviceGroups({
+        q: query.q,
+        domains,
+      });
+    } catch (err) {
+      return reply.code(502).send({
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
 
   app.get("/panel/api/ha/states", async (request, reply) => {
     try {

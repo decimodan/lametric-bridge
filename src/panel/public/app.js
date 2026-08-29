@@ -111,6 +111,10 @@ $$("#tabs button").forEach((btn) => {
     } else {
       stopQueuePolling();
     }
+    if (btn.dataset.tab === "ha") {
+      loadHa().catch((e) => setMsg($("#haMsg"), e.message, "error"));
+      loadHaDeviceBrowser($("#haDeviceBrowser")).catch(() => {});
+    }
     if (btn.dataset.tab === "icons") {
       loadIcons().catch((e) => setMsg($("#iconMsg"), e.message, "error"));
     }
@@ -1303,6 +1307,193 @@ $("#cardForm").addEventListener("submit", async (e) => {
   }
 });
 
+/* HA device browser (group sensors by equipment, drag into editors) */
+let haDeviceGroupsCache = null;
+
+function defaultTemplateForEntity(entity) {
+  const unit = entity.unit ? "{{ unit }}" : "";
+  if (entity.domain === "sensor" || entity.domain === "number") {
+    return `{{ name }}: {{ state | round:1 }}${unit}`;
+  }
+  return `{{ name }}: {{ state }}`;
+}
+
+function applyHaEntityToTargets(browser, entity, mode = "fill") {
+  const entitySel = browser.dataset.dropEntity;
+  const templateSel = browser.dataset.dropTemplate;
+  const entityInput = entitySel ? $(entitySel) : null;
+  const templateInput = templateSel ? $(templateSel) : null;
+
+  if (mode === "entity" || mode === "fill") {
+    if (entityInput) {
+      entityInput.value = entity.entity_id;
+      entityInput.classList.add("drop-flash");
+      setTimeout(() => entityInput.classList.remove("drop-flash"), 500);
+    }
+  }
+  if (mode === "template") {
+    if (templateInput) {
+      const insert = entity.entity_id;
+      const start = templateInput.selectionStart ?? templateInput.value.length;
+      const end = templateInput.selectionEnd ?? start;
+      templateInput.value =
+        templateInput.value.slice(0, start) + insert + templateInput.value.slice(end);
+      templateInput.classList.add("drop-flash");
+      setTimeout(() => templateInput.classList.remove("drop-flash"), 500);
+    }
+  } else if (mode === "fill" && templateInput && !templateInput.dataset.userEdited) {
+    templateInput.value = defaultTemplateForEntity(entity);
+  }
+}
+
+function renderHaSensorChips(browser, deviceId, filter = "") {
+  const list = browser.querySelector("[data-ha-sensor-list]");
+  const empty = browser.querySelector("[data-ha-device-empty]");
+  if (!list || !haDeviceGroupsCache) return;
+
+  const groups = [
+    ...haDeviceGroupsCache.devices,
+    haDeviceGroupsCache.unassigned,
+  ];
+  const group = groups.find((g) => g.id === deviceId);
+  list.innerHTML = "";
+  if (!group) {
+    if (empty) empty.hidden = false;
+    return;
+  }
+
+  const q = filter.trim().toLowerCase();
+  const entities = group.entities.filter((e) => {
+    if (!q) return true;
+    return `${e.entity_id} ${e.name} ${e.state ?? ""}`.toLowerCase().includes(q);
+  });
+
+  if (empty) empty.hidden = entities.length > 0;
+  for (const ent of entities) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "ha-sensor-chip";
+    chip.draggable = true;
+    chip.dataset.entityId = ent.entity_id;
+    chip.innerHTML = `
+      <strong>${escapeHtml(ent.name)}</strong>
+      <span class="meta">${escapeHtml(ent.entity_id)}</span>
+      <span class="ha-sensor-state">${escapeHtml(ent.state ?? "—")}${ent.unit ? ` ${escapeHtml(ent.unit)}` : ""}</span>`;
+    chip.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData(
+        "application/x-ha-entity",
+        JSON.stringify(ent),
+      );
+      e.dataTransfer.setData("text/plain", ent.entity_id);
+      e.dataTransfer.effectAllowed = "copy";
+      chip.classList.add("dragging");
+    });
+    chip.addEventListener("dragend", () => chip.classList.remove("dragging"));
+    chip.addEventListener("click", () => applyHaEntityToTargets(browser, ent, "fill"));
+    list.appendChild(chip);
+  }
+}
+
+function fillHaDeviceSelect(browser) {
+  const sel = browser.querySelector("[data-ha-device-select]");
+  if (!sel || !haDeviceGroupsCache) return;
+  const current = sel.value;
+  const options = haDeviceGroupsCache.devices.map(
+    (d) =>
+      `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}${
+        d.entities.length ? ` (${d.entities.length})` : ""
+      }</option>`,
+  );
+  if (haDeviceGroupsCache.unassigned.entities.length) {
+    options.push(
+      `<option value="__unassigned__">Sin equipo (${haDeviceGroupsCache.unassigned.entities.length})</option>`,
+    );
+  }
+  sel.innerHTML = `<option value="">Elegí un equipo…</option>${options.join("")}`;
+  if ([...sel.options].some((o) => o.value === current)) {
+    sel.value = current;
+  }
+}
+
+async function loadHaDeviceBrowser(browser, force = false) {
+  if (!browser) return;
+  try {
+    if (!haDeviceGroupsCache || force) {
+      haDeviceGroupsCache = await api("/panel/api/ha/devices");
+    }
+    bindHaDeviceBrowser(browser);
+    fillHaDeviceSelect(browser);
+    const sel = browser.querySelector("[data-ha-device-select]");
+    const filter = browser.querySelector("[data-ha-device-filter]");
+    renderHaSensorChips(browser, sel?.value || "", filter?.value || "");
+  } catch (err) {
+    const list = browser.querySelector("[data-ha-sensor-list]");
+    if (list) {
+      list.innerHTML = `<p class="meta">No se pudieron cargar equipos: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+}
+
+function bindHaDeviceBrowser(browser) {
+  if (!browser || browser.dataset.bound) return;
+  browser.dataset.bound = "1";
+
+  browser.querySelector("[data-ha-devices-refresh]")?.addEventListener("click", () => {
+    loadHaDeviceBrowser(browser, true).catch(() => {});
+  });
+  browser.querySelector("[data-ha-device-select]")?.addEventListener("change", (e) => {
+    const filter = browser.querySelector("[data-ha-device-filter]");
+    renderHaSensorChips(browser, e.target.value, filter?.value || "");
+  });
+  browser.querySelector("[data-ha-device-filter]")?.addEventListener("input", (e) => {
+    const sel = browser.querySelector("[data-ha-device-select]");
+    renderHaSensorChips(browser, sel?.value || "", e.target.value || "");
+  });
+
+  const entitySel = browser.dataset.dropEntity;
+  const templateSel = browser.dataset.dropTemplate;
+  for (const sel of [entitySel, templateSel]) {
+    if (!sel) continue;
+    const input = $(sel);
+    if (!input || input.dataset.dropBound) continue;
+    input.dataset.dropBound = "1";
+    input.addEventListener("dragover", (e) => {
+      if (
+        ![...e.dataTransfer.types].includes("application/x-ha-entity") &&
+        ![...e.dataTransfer.types].includes("text/plain")
+      ) {
+        return;
+      }
+      e.preventDefault();
+      input.classList.add("drop-ready");
+    });
+    input.addEventListener("dragleave", () => input.classList.remove("drop-ready"));
+    input.addEventListener("drop", (e) => {
+      e.preventDefault();
+      input.classList.remove("drop-ready");
+      let entity = null;
+      try {
+        entity = JSON.parse(e.dataTransfer.getData("application/x-ha-entity") || "null");
+      } catch {
+        entity = null;
+      }
+      if (!entity) {
+        const id = e.dataTransfer.getData("text/plain");
+        if (!id) return;
+        entity = {
+          entity_id: id,
+          name: id,
+          domain: id.split(".")[0],
+          state: null,
+          unit: null,
+        };
+      }
+      if (sel === templateSel) applyHaEntityToTargets(browser, entity, "template");
+      else applyHaEntityToTargets(browser, entity, "fill");
+    });
+  }
+}
+
 /* Queue / send entities */
 let queuePollTimer = null;
 let deviceQueuePollTimer = null;
@@ -1743,6 +1934,7 @@ async function loadQueueTab() {
     cachedDevices = devices || [];
   }
   fillQueueDeviceFilter();
+  await loadHaDeviceBrowser($("#queueDeviceBrowser"));
   await loadQueueEntities();
   await loadQueueBoard();
 }
@@ -2103,6 +2295,7 @@ $("#channelForm").addEventListener("submit", async (e) => {
 /* HA */
 async function loadHa() {
   fillDeviceSelects();
+  await loadHaDeviceBrowser($("#haDeviceBrowser"));
   const data = await api("/panel/api/ha");
   if (data.baseUrl) $("#haForm").baseUrl.value = data.baseUrl;
 

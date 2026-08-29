@@ -833,3 +833,209 @@ export async function haStatus(): Promise<{
     connected: ws?.readyState === WebSocket.OPEN,
   };
 }
+
+type HaRegistryDevice = {
+  id: string;
+  name: string | null;
+  name_by_user: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  area_id: string | null;
+};
+
+type HaRegistryEntity = {
+  entity_id: string;
+  device_id: string | null;
+  name: string | null;
+  original_name: string | null;
+  platform: string | null;
+  disabled_by: string | null;
+  hidden_by: string | null;
+};
+
+async function haWsRequest<T>(type: string): Promise<T> {
+  const cfg = await getHaConfig();
+  if (!cfg) throw new Error("Home Assistant is not configured");
+
+  const wsUrl = cfg.baseUrl
+    .replace(/^http:/, "ws:")
+    .replace(/^https:/, "wss:")
+    .replace(/\/$/, "");
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let reqId = 0;
+    const sock = new WebSocket(`${wsUrl}/api/websocket`);
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try {
+          sock.close();
+        } catch {
+          /* ignore */
+        }
+        reject(new Error("HA WebSocket request timed out"));
+      }
+    }, 12_000);
+
+    const finish = (err?: Error, value?: T) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        sock.close();
+      } catch {
+        /* ignore */
+      }
+      if (err) reject(err);
+      else resolve(value as T);
+    };
+
+    sock.on("error", (err) => finish(err instanceof Error ? err : new Error(String(err))));
+    sock.on("message", (raw) => {
+      try {
+        const data = JSON.parse(String(raw)) as {
+          type: string;
+          id?: number;
+          success?: boolean;
+          result?: T;
+          message?: string;
+        };
+        if (data.type === "auth_required") {
+          sock.send(JSON.stringify({ type: "auth", access_token: cfg.token }));
+          return;
+        }
+        if (data.type === "auth_ok") {
+          reqId = Date.now() % 1_000_000;
+          sock.send(JSON.stringify({ id: reqId, type }));
+          return;
+        }
+        if (data.type === "auth_invalid") {
+          finish(new Error("HA auth invalid"));
+          return;
+        }
+        if (data.type === "result" && data.id === reqId) {
+          if (data.success === false) {
+            finish(new Error(data.message || "HA registry request failed"));
+            return;
+          }
+          finish(undefined, data.result);
+        }
+      } catch (err) {
+        finish(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+  });
+}
+
+export type HaDeviceGroup = {
+  id: string;
+  name: string;
+  manufacturer: string | null;
+  model: string | null;
+  entities: Array<{
+    entity_id: string;
+    name: string;
+    domain: string;
+    state: string | null;
+    unit: string | null;
+  }>;
+};
+
+export async function listHaDeviceGroups(opts?: {
+  q?: string;
+  domains?: string[];
+}): Promise<{ devices: HaDeviceGroup[]; unassigned: HaDeviceGroup }> {
+  const [devices, entities, states] = await Promise.all([
+    haWsRequest<HaRegistryDevice[]>("config/device_registry/list"),
+    haWsRequest<HaRegistryEntity[]>("config/entity_registry/list"),
+    fetchHaStates().catch(() => [] as Awaited<ReturnType<typeof fetchHaStates>>),
+  ]);
+
+  const stateById = new Map(states.map((s) => [s.entity_id, s]));
+  const domains = opts?.domains?.length
+    ? new Set(opts.domains.map((d) => d.toLowerCase()))
+    : null;
+  const q = opts?.q?.trim().toLowerCase() || "";
+
+  const byDevice = new Map<string, HaDeviceGroup["entities"]>();
+  const unassignedEntities: HaDeviceGroup["entities"] = [];
+
+  for (const ent of entities) {
+    if (ent.disabled_by || ent.hidden_by) continue;
+    const domain = ent.entity_id.split(".")[0] || "";
+    if (domains && !domains.has(domain)) continue;
+
+    const state = stateById.get(ent.entity_id);
+    const name =
+      ent.name ||
+      ent.original_name ||
+      String(state?.attributes?.friendly_name ?? "") ||
+      ent.entity_id;
+    const item = {
+      entity_id: ent.entity_id,
+      name,
+      domain,
+      state: state?.state ?? null,
+      unit: state
+        ? String(state.attributes?.unit_of_measurement ?? "") || null
+        : null,
+    };
+
+    if (!ent.device_id) {
+      unassignedEntities.push(item);
+      continue;
+    }
+    const list = byDevice.get(ent.device_id) ?? [];
+    list.push(item);
+    byDevice.set(ent.device_id, list);
+  }
+
+  const deviceGroups: HaDeviceGroup[] = [];
+  for (const device of devices) {
+    const ents = byDevice.get(device.id);
+    if (!ents?.length) continue;
+    const name =
+      device.name_by_user ||
+      device.name ||
+      [device.manufacturer, device.model].filter(Boolean).join(" ") ||
+      device.id;
+    if (q) {
+      const deviceHay =
+        `${name} ${device.manufacturer ?? ""} ${device.model ?? ""}`.toLowerCase();
+      const entityMatch = ents.some((e) =>
+        `${e.entity_id} ${e.name}`.toLowerCase().includes(q),
+      );
+      if (!deviceHay.includes(q) && !entityMatch) continue;
+    }
+    ents.sort((a, b) => a.name.localeCompare(b.name, "es"));
+    deviceGroups.push({
+      id: device.id,
+      name,
+      manufacturer: device.manufacturer,
+      model: device.model,
+      entities: ents,
+    });
+  }
+
+  deviceGroups.sort((a, b) => a.name.localeCompare(b.name, "es"));
+  unassignedEntities.sort((a, b) => a.name.localeCompare(b.name, "es"));
+
+  let unassignedFiltered = unassignedEntities;
+  if (q) {
+    unassignedFiltered = unassignedEntities.filter((e) =>
+      `${e.entity_id} ${e.name}`.toLowerCase().includes(q),
+    );
+  }
+
+  return {
+    devices: deviceGroups,
+    unassigned: {
+      id: "__unassigned__",
+      name: "Sin equipo",
+      manufacturer: null,
+      model: null,
+      entities: unassignedFiltered,
+    },
+  };
+}
