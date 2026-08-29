@@ -140,6 +140,7 @@ function serializeItem(item: QueueItem, position: number) {
     priority: item.message.priority ?? "info",
     source: item.message.source,
     deviceId: item.message.deviceId,
+    sound: item.message.sound,
     enqueuedAt: item.enqueuedAt,
     position,
     attempts: item.attempts,

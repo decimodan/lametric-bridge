@@ -71,6 +71,7 @@ import {
   resolveDeviceByMac,
   saveDevice,
   updateDeviceMac,
+  updateDeviceNotifyPrefs,
 } from "../services/devices.js";
 import {
   clearQueue,
@@ -239,12 +240,34 @@ function registerPanelApi(app: FastifyInstance): void {
         host: z.string().min(1).optional(),
         macAddress: z.string().max(32).nullable().optional(),
         apiKey: z.string().optional(),
+        notifySoundMode: z.enum(["inherit", "on", "off"]).optional(),
+        notifySoundId: z.string().max(64).nullable().optional(),
       })
       .safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: parsed.error.flatten() });
     }
     try {
+      if (
+        parsed.data.notifySoundMode !== undefined ||
+        parsed.data.notifySoundId !== undefined
+      ) {
+        const updated = await updateDeviceNotifyPrefs(id, {
+          notifySoundMode: parsed.data.notifySoundMode,
+          notifySoundId: parsed.data.notifySoundId,
+        });
+        if (!updated) return reply.code(404).send({ error: "Not found" });
+        if (
+          parsed.data.slug === undefined &&
+          parsed.data.name === undefined &&
+          parsed.data.host === undefined &&
+          parsed.data.macAddress === undefined &&
+          parsed.data.apiKey === undefined
+        ) {
+          return { device: publicDevice(updated) };
+        }
+      }
+
       if (existing.envManaged) {
         if (
           parsed.data.slug !== undefined ||

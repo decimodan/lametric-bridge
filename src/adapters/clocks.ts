@@ -5,6 +5,7 @@ import {
   touchDevice,
 } from "../services/devices.js";
 import type { Message } from "../services/render.js";
+import { applyDeviceSound } from "../services/deviceNotify.js";
 import {
   getAwtrixStatus,
   sendToAwtrix,
@@ -53,11 +54,16 @@ export async function dispatchNotification(
 export async function sendToDevice(
   device: Device,
   message: Message,
+  opts?: { bypassNotifyPrefs?: boolean },
 ): Promise<{ ok: boolean; detail: string }> {
+  const outbound =
+    opts?.bypassNotifyPrefs || message.source === "identify"
+      ? message
+      : { ...message, sound: applyDeviceSound(device, message.sound) };
   if (device.kind === "awtrix") {
-    return sendToAwtrix(device, message);
+    return sendToAwtrix(device, outbound);
   }
-  return sendToLametric(device, message);
+  return sendToLametric(device, outbound);
 }
 
 export async function testDevice(
@@ -81,7 +87,7 @@ export async function identifyDevice(
     cycles: 2,
     source: "identify",
     deviceId: device.id,
-  });
+  }, { bypassNotifyPrefs: true });
 }
 
 export async function getDeviceStatus(idOrSlug: string): Promise<{

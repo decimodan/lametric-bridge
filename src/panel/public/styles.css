@@ -967,6 +967,16 @@ code {
   .status-card { min-height: 7.25rem; }
 }
 
+.device-list li form.device-notify-prefs {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(168, 85, 247, 0.12);
+}
+
+.device-list li form.device-notify-prefs .row {
+  align-items: flex-end;
+}
+
 .device-list li {
   flex-direction: column;
   align-items: stretch;

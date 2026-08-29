@@ -631,10 +631,60 @@ async function loadDevices() {
           Automático
         </label>
         <button type="submit">Aplicar brillo</button>
+      </form>
+      <form class="device-notify-prefs" data-notify-form="${d.id}">
+        <div class="row">
+          <label>Sonido
+            <select name="notifySoundMode" data-notify-mode="${d.id}">
+              <option value="inherit" ${d.notifySoundMode === "inherit" ? "selected" : ""}>Según la notificación</option>
+              <option value="on" ${d.notifySoundMode === "on" ? "selected" : ""}>Siempre con sonido</option>
+              <option value="off" ${d.notifySoundMode === "off" ? "selected" : ""}>Siempre silencioso</option>
+            </select>
+          </label>
+          <label data-notify-sound-wrap="${d.id}" ${d.notifySoundMode === "on" ? "" : "hidden"}>
+            Tono
+            <select name="notifySoundId" data-notify-sound="${d.id}"></select>
+          </label>
+        </div>
+        ${d.kind === "awtrix" ? `<p class="meta">Ulanzi: beep genérico al activar sonido.</p>` : ""}
+        <button type="submit" class="secondary">Guardar notificaciones</button>
       </form>`;
     list.appendChild(li);
     loadDeviceStatus(d.id).catch(() => {});
+    const soundSel = li.querySelector(`[data-notify-sound="${d.id}"]`);
+    if (soundSel) {
+      fillSoundSelect(soundSel, d.notifySoundId || "notification");
+    }
   }
+
+  list.querySelectorAll("[data-notify-mode]").forEach((sel) => {
+    sel.addEventListener("change", () => {
+      const wrap = list.querySelector(`[data-notify-sound-wrap="${sel.dataset.notifyMode}"]`);
+      if (wrap) wrap.hidden = sel.value !== "on";
+    });
+  });
+
+  list.querySelectorAll("form.device-notify-prefs").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = form.dataset.notifyForm;
+      const mode = form.querySelector(`[data-notify-mode="${id}"]`)?.value || "inherit";
+      const soundId = form.querySelector(`[data-notify-sound="${id}"]`)?.value || null;
+      try {
+        await api(`/panel/api/devices/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            notifySoundMode: mode,
+            notifySoundId: mode === "on" ? soundId : null,
+          }),
+        });
+        setMsg($("#deviceMsg"), "Preferencias de notificación guardadas", "ok");
+        await loadDevices();
+      } catch (err) {
+        setMsg($("#deviceMsg"), err.message, "error");
+      }
+    });
+  });
 
   list.querySelectorAll("[data-resolve]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1332,7 +1382,25 @@ function fillQueueDeviceFilter() {
   }
 }
 
-function renderQueueLanes(items, lanePrefix, showDevice = false) {
+function describeQueueSound(item, device = null) {
+  const sound = item.sound;
+  if (!device) {
+    if (sound === false) return "mudo";
+    if (typeof sound === "string") return sound;
+    if (sound === true) return "sonido";
+    return "sin sonido";
+  }
+  if (device.notifySoundMode === "off") return "silencioso (reloj)";
+  if (device.notifySoundMode === "on") {
+    return `${device.notifySoundId || "notification"} (reloj)`;
+  }
+  if (sound === false) return "mudo";
+  if (typeof sound === "string") return sound;
+  if (sound === true) return "sonido";
+  return "sin sonido";
+}
+
+function renderQueueLanes(items, lanePrefix, showDevice = false, deviceForSound = null) {
   for (const p of ["critical", "warning", "info"]) {
     const lane = $(`#${lanePrefix}-${p}`);
     if (!lane) continue;
@@ -1344,9 +1412,10 @@ function renderQueueLanes(items, lanePrefix, showDevice = false) {
         showDevice && item.deviceId
           ? ` · ${escapeHtml(queueDeviceLabel(item.deviceId))}`
           : "";
+      const soundMeta = ` · ${escapeHtml(describeQueueSound(item, deviceForSound))}`;
       li.innerHTML = `
         <strong>#${item.position} ${escapeHtml(item.text)}</strong>
-        <div class="meta">${escapeHtml(item.source)}${deviceMeta} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
+        <div class="meta">${escapeHtml(item.source)}${deviceMeta}${soundMeta} · ${new Date(item.enqueuedAt).toLocaleTimeString()}</div>`;
       lane.appendChild(li);
     }
   }
@@ -1400,9 +1469,10 @@ function stopDeviceQueuePolling() {
 
 async function loadDeviceQueueBoard(deviceId) {
   const data = await api(`/panel/api/devices/${deviceId}/queue`);
+  const device = cachedDevices.find((d) => d.id === deviceId) || null;
   $("#deviceQueueSizeLabel").textContent = `(${data.size})`;
   $("#deviceQueueCurrentLabel").textContent = formatQueueCurrentLabel(data, false);
-  renderQueueLanes(data.items, "device-lane", false);
+  renderQueueLanes(data.items, "device-lane", false, device);
 }
 
 async function loadQueueEntities() {

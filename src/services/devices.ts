@@ -24,6 +24,8 @@ export type DeviceRow = {
   env_managed: boolean;
   last_seen: string | Date | null;
   created_at: string | Date;
+  notify_sound_mode: "inherit" | "on" | "off";
+  notify_sound_id: string | null;
 };
 
 export type Device = {
@@ -36,6 +38,8 @@ export type Device = {
   apiKey: string;
   envManaged: boolean;
   lastSeen: string | Date | null;
+  notifySoundMode: "inherit" | "on" | "off";
+  notifySoundId: string | null;
 };
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -55,6 +59,8 @@ function toDevice(row: DeviceRow): Device {
     apiKey: row.api_key_enc ? decryptSecret(row.api_key_enc) : "",
     envManaged: row.env_managed,
     lastSeen: row.last_seen,
+    notifySoundMode: row.notify_sound_mode ?? "inherit",
+    notifySoundId: row.notify_sound_id ?? null,
   };
 }
 
@@ -170,6 +176,32 @@ export async function updateDeviceMac(
     id,
   ]);
   invalidateResolveCache(id);
+  return getDevice(id);
+}
+
+export async function updateDeviceNotifyPrefs(
+  id: string,
+  prefs: {
+    notifySoundMode?: "inherit" | "on" | "off";
+    notifySoundId?: string | null;
+  },
+): Promise<Device | null> {
+  const existing = await getDevice(id);
+  if (!existing) return null;
+
+  const mode = prefs.notifySoundMode ?? existing.notifySoundMode;
+  let soundId =
+    prefs.notifySoundId !== undefined
+      ? prefs.notifySoundId?.trim() || null
+      : existing.notifySoundId;
+  if (mode !== "on") {
+    soundId = null;
+  }
+
+  await query(
+    `UPDATE devices SET notify_sound_mode = $1, notify_sound_id = $2 WHERE id = $3`,
+    [mode, soundId, id],
+  );
   return getDevice(id);
 }
 
@@ -354,5 +386,7 @@ export function publicDevice(device: Device) {
     envManaged: device.envManaged,
     lastSeen: device.lastSeen,
     hasApiKey: Boolean(device.apiKey),
+    notifySoundMode: device.notifySoundMode,
+    notifySoundId: device.notifySoundId,
   };
 }
