@@ -4,9 +4,10 @@ import { getDevice } from "./devices.js";
 import { getCard, type AlertCard } from "./cards.js";
 import { enqueue } from "./queue.js";
 import { renderTemplate, type Priority } from "./render.js";
+import { getSensorCard, type SensorCard } from "./sensorCards.js";
 import { normalizeSoundId } from "./sounds.js";
 
-export type AutomationSource = "ha" | "connection";
+export type AutomationSource = "ha" | "connection" | "sensor";
 export type AutomationTrigger = "change" | "equals" | "gt" | "lt";
 
 export type CardAutomation = {
@@ -15,6 +16,7 @@ export type CardAutomation = {
   source: AutomationSource;
   cardId: string;
   entityId: string | null;
+  sensorCardId: string | null;
   appName: string | null;
   eventName: string | null;
   deviceId: string | null;
@@ -36,6 +38,7 @@ type CardAutomationRow = {
   source: AutomationSource;
   card_id: string;
   entity_id: string | null;
+  sensor_card_id: string | null;
   app_name: string | null;
   event_name: string | null;
   device_id: string | null;
@@ -96,6 +99,7 @@ function toAutomation(row: CardAutomationRow): CardAutomation {
     source: row.source ?? "ha",
     cardId: row.card_id,
     entityId: row.entity_id,
+    sensorCardId: row.sensor_card_id,
     appName: row.app_name,
     eventName: row.event_name,
     deviceId: row.device_id,
@@ -127,6 +131,9 @@ export function publicAutomation(
     card?: AlertCard | null;
     deviceName?: string | null;
     deviceSlug?: string | null;
+    sensorCardTitle?: string | null;
+    sensorCardEntityId?: string | null;
+    sensorCardAlertSummary?: string | null;
   },
 ) {
   const soundEffective = extras?.card
@@ -138,6 +145,7 @@ export function publicAutomation(
     source: auto.source,
     cardId: auto.cardId,
     entityId: auto.entityId,
+    sensorCardId: auto.sensorCardId,
     appName: auto.appName,
     eventName: auto.eventName,
     deviceId: auto.deviceId,
@@ -159,6 +167,9 @@ export function publicAutomation(
     cardPriority: extras?.card?.priority ?? null,
     deviceName: extras?.deviceName ?? null,
     deviceSlug: extras?.deviceSlug ?? null,
+    sensorCardTitle: extras?.sensorCardTitle ?? null,
+    sensorCardEntityId: extras?.sensorCardEntityId ?? null,
+    sensorCardAlertSummary: extras?.sensorCardAlertSummary ?? null,
   };
 }
 
@@ -179,6 +190,19 @@ export async function listEnabledAutomationsForEntity(
        AND source = 'ha'
        AND entity_id = $1`,
     [entityId],
+  );
+  return res.rows.map(toAutomation);
+}
+
+export async function listEnabledSensorAutomations(
+  sensorCardId: string,
+): Promise<CardAutomation[]> {
+  const res = await query<CardAutomationRow>(
+    `SELECT * FROM card_automations
+     WHERE enabled = TRUE
+       AND source = 'sensor'
+       AND sensor_card_id = $1`,
+    [sensorCardId],
   );
   return res.rows.map(toAutomation);
 }
@@ -220,6 +244,7 @@ export async function saveAutomation(input: {
   source?: AutomationSource;
   cardId: string;
   entityId?: string | null;
+  sensorCardId?: string | null;
   appName?: string | null;
   eventName?: string | null;
   deviceId?: string | null;
@@ -239,6 +264,7 @@ export async function saveAutomation(input: {
   const source = input.source ?? existing?.source ?? "ha";
 
   let entityId: string | null = null;
+  let sensorCardId: string | null = null;
   let appName: string | null = null;
   let eventName: string | null = null;
   let trigger: AutomationTrigger = "change";
@@ -259,6 +285,15 @@ export async function saveAutomation(input: {
       throw new Error("trigger_value required for equals/gt/lt");
     }
     if (trigger === "change") triggerValue = null;
+  } else if (source === "sensor") {
+    sensorCardId =
+      (input.sensorCardId ?? existing?.sensorCardId ?? "").trim() || null;
+    if (!sensorCardId) throw new Error("sensor_card_id required for sensor rules");
+    const sensorCard = await getSensorCard(sensorCardId);
+    if (!sensorCard) throw new Error("Sensor card not found");
+    entityId = sensorCard.entityId;
+    trigger = "change";
+    triggerValue = null;
   } else {
     appName = (input.appName ?? existing?.appName ?? "").trim().toLowerCase() || null;
     eventName = (input.eventName ?? existing?.eventName ?? "").trim() || null;
@@ -288,19 +323,22 @@ export async function saveAutomation(input: {
   const defaultName =
     source === "ha"
       ? `${card.name} ← ${entityId}`
-      : `${card.name} ← ${appName}:${eventName}`;
+      : source === "sensor"
+        ? `${card.name} ← sensor:${sensorCardId?.slice(0, 8)}`
+        : `${card.name} ← ${appName}:${eventName}`;
   const name = (input.name ?? existing?.name ?? "").trim() || defaultName;
 
   await query(
     `INSERT INTO card_automations
-       (id, name, source, card_id, entity_id, app_name, event_name,
+       (id, name, source, card_id, entity_id, sensor_card_id, app_name, event_name,
         device_id, enabled, sound, sound_id, trigger, trigger_value)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (id) DO UPDATE SET
        name = EXCLUDED.name,
        source = EXCLUDED.source,
        card_id = EXCLUDED.card_id,
        entity_id = EXCLUDED.entity_id,
+       sensor_card_id = EXCLUDED.sensor_card_id,
        app_name = EXCLUDED.app_name,
        event_name = EXCLUDED.event_name,
        device_id = EXCLUDED.device_id,
@@ -315,6 +353,7 @@ export async function saveAutomation(input: {
       source,
       card.id,
       entityId,
+      sensorCardId,
       appName,
       eventName,
       deviceId,
@@ -479,6 +518,51 @@ export function frigateTemplateVars(input: {
     score: scorePct,
     sub_label: subLabel,
   };
+}
+
+export function sensorAutomationTemplateVars(
+  sensorCard: Pick<SensorCard, "title" | "entityId">,
+  state: string,
+  attributes: Record<string, unknown>,
+): Record<string, string> {
+  return {
+    ...haTemplateVars(state, attributes, sensorCard.entityId),
+    title: sensorCard.title,
+  };
+}
+
+/** Enqueue matching sensor-card automations when a sensor card's conditions fire. */
+export async function enqueueSensorAutomations(opts: {
+  sensorCard: SensorCard;
+  state: string;
+  attributes: Record<string, unknown>;
+}): Promise<number> {
+  const autos = await listEnabledSensorAutomations(opts.sensorCard.id);
+  let hits = 0;
+
+  for (const auto of autos) {
+    const card = await getCard(auto.cardId);
+    if (!card) continue;
+    const vars = sensorAutomationTemplateVars(
+      opts.sensorCard,
+      opts.state,
+      opts.attributes,
+    );
+    const rendered = renderCardText(card, vars);
+    if (!rendered) continue;
+    await enqueue({
+      text: rendered,
+      icon: card.icon,
+      priority: card.priority,
+      sound: resolveAutomationSound(auto, card),
+      source: `card-auto:sensor:${opts.sensorCard.id}:${card.slug}`,
+      deviceId: auto.deviceId ?? undefined,
+    });
+    await markAutomationSent(auto.id, opts.state);
+    hits += 1;
+  }
+
+  return hits;
 }
 
 /** Enqueue matching connection automations for one or more events (deduped by rule id). */

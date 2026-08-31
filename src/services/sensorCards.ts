@@ -147,6 +147,24 @@ export async function listAlertSensorCardsForEntity(
   return res.rows.map(toSensorCard);
 }
 
+/** Sensor cards that should react to HA state (built-in alert and/or sensor automations). */
+export async function listActiveSensorCardsForEntity(
+  entityId: string,
+): Promise<SensorCard[]> {
+  const res = await query<SensorCardRow>(
+    `SELECT DISTINCT sc.* FROM sensor_cards sc
+     LEFT JOIN card_automations ca
+       ON ca.sensor_card_id = sc.id
+      AND ca.enabled = TRUE
+      AND ca.source = 'sensor'
+     WHERE sc.entity_id = $1
+       AND sc.enabled = TRUE
+       AND (sc.alert_enabled = TRUE OR ca.id IS NOT NULL)`,
+    [entityId],
+  );
+  return res.rows.map(toSensorCard);
+}
+
 export async function listIntervalSensorCards(): Promise<SensorCard[]> {
   const res = await query<SensorCardRow>(
     `SELECT * FROM sensor_cards
@@ -158,6 +176,26 @@ export async function listIntervalSensorCards(): Promise<SensorCard[]> {
          OR last_sent_at <= NOW() - (interval_sec * INTERVAL '1 second')
        )
      ORDER BY title ASC`,
+  );
+  return res.rows.map(toSensorCard);
+}
+
+export async function listActiveIntervalSensorCards(): Promise<SensorCard[]> {
+  const res = await query<SensorCardRow>(
+    `SELECT DISTINCT sc.* FROM sensor_cards sc
+     LEFT JOIN card_automations ca
+       ON ca.sensor_card_id = sc.id
+      AND ca.enabled = TRUE
+      AND ca.source = 'sensor'
+     WHERE sc.enabled = TRUE
+       AND sc.interval_sec IS NOT NULL
+       AND sc.interval_sec >= 10
+       AND (sc.alert_enabled = TRUE OR ca.id IS NOT NULL)
+       AND (
+         sc.last_sent_at IS NULL
+         OR sc.last_sent_at <= NOW() - (sc.interval_sec * INTERVAL '1 second')
+       )
+     ORDER BY sc.title ASC`,
   );
   return res.rows.map(toSensorCard);
 }
@@ -370,6 +408,7 @@ export async function emitSensorCardAlert(
   state: string,
   attributes: Record<string, unknown>,
   sourcePrefix: string,
+  markSent = true,
 ): Promise<boolean> {
   if (!passesAbsoluteRules(card, state)) return false;
 
@@ -390,8 +429,28 @@ export async function emitSensorCardAlert(
     source: `${sourcePrefix}:sensor-card:${card.id}`,
     ...enqueueTargets(card),
   });
-  await markSensorCardSent(card.id, state);
+  if (markSent) await markSensorCardSent(card.id, state);
   return true;
+}
+
+export async function processSensorCardTrigger(
+  card: SensorCard,
+  state: string,
+  attributes: Record<string, unknown>,
+  sourcePrefix: string,
+): Promise<void> {
+  const { enqueueSensorAutomations } = await import("./cardAutomations.js");
+  let fired = false;
+  if (card.alertEnabled) {
+    fired = await emitSensorCardAlert(card, state, attributes, sourcePrefix, false);
+  }
+  const autoHits = await enqueueSensorAutomations({
+    sensorCard: card,
+    state,
+    attributes,
+  });
+  if (autoHits > 0) fired = true;
+  if (fired) await markSensorCardSent(card.id, state);
 }
 
 function deviceClassFromEntity(

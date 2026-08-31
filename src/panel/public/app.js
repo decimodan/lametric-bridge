@@ -1356,7 +1356,58 @@ function ruleIfLabel(a) {
   if (a.source === "connection") {
     return `SI ${a.appName || "app"} → ${a.eventName || "event"}`;
   }
+  if (a.source === "sensor") {
+    const title = a.sensorCardTitle || a.entityId || "sensor";
+    const summary = a.sensorCardAlertSummary ? ` (${a.sensorCardAlertSummary})` : "";
+    return `SI sensor ${title}${summary}`;
+  }
   return `SI ${a.entityId || "?"} ${triggerLabel(a.trigger, a.triggerValue)}`;
+}
+
+let automationSensorCards = [];
+
+async function loadAutomationSensorCards() {
+  try {
+    const { cards } = await api("/panel/api/sensor-cards");
+    automationSensorCards = cards || [];
+  } catch {
+    automationSensorCards = [];
+  }
+  fillAutomationSensorSelect();
+}
+
+function fillAutomationSensorSelect() {
+  const sel = $("#autoSensorSelect");
+  if (!sel) return;
+  const current = sel.value;
+  if (!automationSensorCards.length) {
+    sel.innerHTML =
+      '<option value="">— sin sensores (creá uno en Inicio) —</option>';
+    return;
+  }
+  sel.innerHTML =
+    '<option value="">— elegí un sensor —</option>' +
+    automationSensorCards
+      .map((c) => {
+        const label = `${c.title} (${c.entityId})${c.alertSummary ? ` · ${c.alertSummary}` : ""}`;
+        return `<option value="${escapeHtml(c.id)}" ${current === c.id ? "selected" : ""}>${escapeHtml(label)}</option>`;
+      })
+      .join("");
+}
+
+function syncAutoSensorHint() {
+  const hint = $("#autoSensorHint");
+  const sel = $("#autoSensorSelect");
+  if (!hint || !sel) return;
+  const card = automationSensorCards.find((c) => c.id === sel.value);
+  if (!card) {
+    hint.textContent =
+      "Usa las condiciones del sensor (umbrales, intervalo) configuradas en Inicio → Sensores.";
+    return;
+  }
+  hint.textContent = card.alertSummary
+    ? `Dispara cuando: ${card.alertSummary}. Editá umbrales en Inicio → Sensores.`
+    : "Sin umbrales: dispara al cambiar el valor. Configurá alertas en Inicio → Sensores.";
 }
 
 let connectionCatalog = [];
@@ -1419,22 +1470,26 @@ function syncAutoSourceUI() {
   const source = $("#autoSource")?.value || "connection";
   const ha = $("#autoHaFields");
   const conn = $("#autoConnFields");
+  const sensor = $("#autoSensorFields");
   if (ha) ha.hidden = source !== "ha";
   if (conn) conn.hidden = source !== "connection";
+  if (sensor) sensor.hidden = source !== "sensor";
   if (source === "ha") syncAutoValueVisibility();
+  if (source === "sensor") syncAutoSensorHint();
 }
 
 async function loadAutomations() {
   fillDeviceSelects();
   fillCardSelect();
   fillConnectionSelects();
+  await loadAutomationSensorCards();
   syncAutoSourceUI();
   const { automations } = await api("/panel/api/automations");
   const list = $("#autoList");
   list.innerHTML = "";
   if (!automations.length) {
     const li = document.createElement("li");
-    li.innerHTML = `<div class="meta">Sin reglas. Armá una arriba: SI Conexiones/HA → ENTONCES card en reloj.</div>`;
+    li.innerHTML = `<div class="meta">Sin reglas. Armá una arriba: SI Conexiones/Sensores/HA → ENTONCES card en reloj.</div>`;
     list.appendChild(li);
     return;
   }
@@ -1443,7 +1498,9 @@ async function loadAutomations() {
     const badge =
       a.source === "connection"
         ? `<span class="badge badge-preset">conexión</span>`
-        : `<span class="badge">HA</span>`;
+        : a.source === "sensor"
+          ? `<span class="badge">sensor</span>`
+          : `<span class="badge">HA</span>`;
     li.innerHTML = `
       <div class="auto-rule">
         <div>
@@ -1518,6 +1575,7 @@ function syncAutoValueVisibility() {
 
 $("#autoTrigger").addEventListener("change", syncAutoValueVisibility);
 $("#autoSource").addEventListener("change", syncAutoSourceUI);
+$("#autoSensorSelect")?.addEventListener("change", syncAutoSensorHint);
 $("#autoAppSelect").addEventListener("change", () => fillConnectionSelects());
 $("#autoSoundSelect")?.addEventListener("change", syncAutoSoundIdWrap);
 $("#cardSoundCheck")?.addEventListener("change", () => {
@@ -1564,6 +1622,12 @@ $("#autoForm").addEventListener("submit", async (e) => {
     payload.entityId = String(fd.get("entityId") || "").trim();
     payload.trigger = trigger;
     payload.triggerValue = trigger === "change" ? null : String(fd.get("triggerValue") || "").trim();
+  } else if (source === "sensor") {
+    payload.sensorCardId = String(fd.get("sensorCardId") || "").trim();
+    if (!payload.sensorCardId) {
+      setMsg($("#autoMsg"), "Elegí un sensor", "error");
+      return;
+    }
   } else {
     payload.appName = String(fd.get("appName") || "sentinel").trim();
     payload.eventName = String(fd.get("eventName") || "").trim();
@@ -1582,6 +1646,7 @@ $("#autoForm").addEventListener("submit", async (e) => {
     fillCardSelect();
     fillDeviceSelects();
     fillConnectionSelects();
+    await loadAutomationSensorCards();
     setMsg($("#autoMsg"), "Regla creada", "ok");
     await loadAutomations();
   } catch (err) {

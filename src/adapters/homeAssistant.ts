@@ -410,13 +410,17 @@ async function handleSensorCardAlerts(
   state: string,
   attributes: Record<string, unknown>,
 ): Promise<void> {
-  const { listAlertSensorCardsForEntity, shouldEmitSensorCardOnChange, isSensorCardIntervalDriven, emitSensorCardAlert } =
-    await import("../services/sensorCards.js");
-  const cards = await listAlertSensorCardsForEntity(entityId);
+  const {
+    listActiveSensorCardsForEntity,
+    shouldEmitSensorCardOnChange,
+    isSensorCardIntervalDriven,
+    processSensorCardTrigger,
+  } = await import("../services/sensorCards.js");
+  const cards = await listActiveSensorCardsForEntity(entityId);
   for (const card of cards) {
     if (isSensorCardIntervalDriven(card)) continue;
     if (!shouldEmitSensorCardOnChange(card, state)) continue;
-    await emitSensorCardAlert(card, state, attributes, "ha");
+    await processSensorCardTrigger(card, state, attributes, "ha");
   }
 }
 
@@ -473,10 +477,10 @@ async function tickIntervalEntities(): Promise<void> {
   );
 
   const {
-    listIntervalSensorCards,
-    emitSensorCardAlert,
+    listActiveIntervalSensorCards,
+    processSensorCardTrigger,
   } = await import("../services/sensorCards.js");
-  const sensorCards = await listIntervalSensorCards();
+  const sensorCards = await listActiveIntervalSensorCards();
 
   if (!entities.rows.length && !sensorCards.length) return;
 
@@ -517,7 +521,7 @@ async function tickIntervalEntities(): Promise<void> {
     ) {
       continue;
     }
-    await emitSensorCardAlert(card, s.state, s.attributes ?? {}, "ha-interval");
+    await processSensorCardTrigger(card, s.state, s.attributes ?? {}, "ha-interval");
   }
 }
 

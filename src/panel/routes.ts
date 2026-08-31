@@ -732,10 +732,18 @@ function registerPanelApi(app: FastifyInstance): void {
       autos.map(async (auto) => {
         const card = await getCard(auto.cardId);
         const device = auto.deviceId ? deviceById.get(auto.deviceId) : null;
+        const sensorCard = auto.sensorCardId
+          ? await getSensorCard(auto.sensorCardId)
+          : null;
         return publicAutomation(auto, {
           card,
           deviceName: device?.name ?? (auto.deviceId ? null : "todos"),
           deviceSlug: device?.slug ?? null,
+          sensorCardTitle: sensorCard?.title ?? null,
+          sensorCardEntityId: sensorCard?.entityId ?? null,
+          sensorCardAlertSummary: sensorCard
+            ? publicSensorCard(sensorCard).alertSummary
+            : null,
         });
       }),
     );
@@ -746,9 +754,10 @@ function registerPanelApi(app: FastifyInstance): void {
     const parsed = z
       .object({
         name: z.string().max(128).optional(),
-        source: z.enum(["ha", "connection"]).optional(),
+        source: z.enum(["ha", "connection", "sensor"]).optional(),
         cardId: z.string().min(1),
         entityId: z.string().min(1).max(128).nullable().optional(),
+        sensorCardId: z.string().min(1).max(64).nullable().optional(),
         appName: z.string().min(1).max(64).nullable().optional(),
         eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
@@ -768,6 +777,7 @@ function registerPanelApi(app: FastifyInstance): void {
         source: parsed.data.source,
         cardId: parsed.data.cardId,
         entityId: parsed.data.entityId,
+        sensorCardId: parsed.data.sensorCardId,
         appName: parsed.data.appName,
         eventName: parsed.data.eventName,
         deviceId: parsed.data.deviceId ?? null,
@@ -800,9 +810,10 @@ function registerPanelApi(app: FastifyInstance): void {
     const parsed = z
       .object({
         name: z.string().max(128).optional(),
-        source: z.enum(["ha", "connection"]).optional(),
+        source: z.enum(["ha", "connection", "sensor"]).optional(),
         cardId: z.string().min(1).optional(),
         entityId: z.string().min(1).max(128).nullable().optional(),
+        sensorCardId: z.string().min(1).max(64).nullable().optional(),
         appName: z.string().min(1).max(64).nullable().optional(),
         eventName: z.string().min(1).max(64).nullable().optional(),
         deviceId: z.string().min(1).max(64).nullable().optional(),
@@ -843,6 +854,10 @@ function registerPanelApi(app: FastifyInstance): void {
           parsed.data.entityId === undefined
             ? existing.entityId
             : parsed.data.entityId,
+        sensorCardId:
+          parsed.data.sensorCardId === undefined
+            ? existing.sensorCardId
+            : parsed.data.sensorCardId,
         appName:
           parsed.data.appName === undefined
             ? existing.appName
@@ -921,6 +936,32 @@ function registerPanelApi(app: FastifyInstance): void {
           name: "Show.S01",
         });
       }
+    } else if (auto.source === "sensor") {
+      const sensorCard = auto.sensorCardId
+        ? await getSensorCard(auto.sensorCardId)
+        : null;
+      let state = "42";
+      let attributes: Record<string, unknown> = {
+        friendly_name: sensorCard?.title ?? "Sensor",
+        unit_of_measurement: "°C",
+      };
+      const entityId = sensorCard?.entityId ?? auto.entityId ?? "sensor.test";
+      try {
+        const states = await fetchHaStates();
+        const s = states.find((x) => x.entity_id === entityId);
+        if (s) {
+          state = s.state;
+          attributes = s.attributes ?? attributes;
+        }
+      } catch {
+        /* use placeholder */
+      }
+      vars = sensorCard
+        ? {
+            ...haTemplateVars(state, attributes, entityId),
+            title: sensorCard.title,
+          }
+        : haTemplateVars(state, attributes, entityId);
     } else {
       let state = "test";
       let attributes: Record<string, unknown> = {};

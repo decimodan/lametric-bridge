@@ -363,7 +363,7 @@
         <header class="card-head">
           <h2>Automatizaciones (IF → THEN)</h2>
           <p class="hint">
-            Como IFTTT: fuente <strong>Conexiones</strong> (Sentinel / Frigate) o Home Assistant → card → reloj.
+            Como IFTTT: fuente <strong>Conexiones</strong> (Sentinel / Frigate), <strong>Sensores</strong> o Home Assistant → card → reloj.
           </p>
         </header>
 
@@ -373,6 +373,7 @@
             <label>Fuente
               <select name="source" id="autoSource">
                 <option value="connection">Conexiones</option>
+                <option value="sensor">Sensores</option>
                 <option value="ha">Home Assistant</option>
               </select>
             </label>
@@ -393,6 +394,16 @@
               <label id="autoValueWrap" hidden>Valor
                 <input name="triggerValue" id="autoTriggerValue" placeholder="on / 30" />
               </label>
+            </div>
+            <div id="autoSensorFields" class="ifttt-row" hidden>
+              <label class="grow">Sensor
+                <select name="sensorCardId" id="autoSensorSelect">
+                  <option value="">— elegí un sensor —</option>
+                </select>
+              </label>
+              <p class="hint" id="autoSensorHint" style="margin:0;flex:1 1 100%">
+                Usa las condiciones del sensor (umbrales, intervalo) configuradas en Inicio → Sensores.
+              </p>
             </div>
             <div id="autoConnFields" class="ifttt-row">
               <label>App
@@ -436,7 +447,7 @@
             </label>
             <button type="submit" class="btn-lime">Crear regla</button>
           </div>
-          <p class="hint">Conexiones: el app del panel debe llamarse igual (<code>sentinel</code>, <code>frigate</code>). Vars Sentinel: <code>{{ name }}</code>, <code>{{ hot_free }}</code>, <code>{{ text }}</code>, <code>{{ event }}</code>. Vars Frigate: <code>{{ label_es }}</code>, <code>{{ camera }}</code>, <code>{{ zone }}</code>, <code>{{ score }}</code>. Audio: heredar / forzar / mudo + sonido LaMetric.</p>
+          <p class="hint">Conexiones: el app del panel debe llamarse igual (<code>sentinel</code>, <code>frigate</code>). Vars Sentinel: <code>{{ name }}</code>, <code>{{ hot_free }}</code>, <code>{{ text }}</code>, <code>{{ event }}</code>. Vars Frigate: <code>{{ label_es }}</code>, <code>{{ camera }}</code>, <code>{{ zone }}</code>, <code>{{ score }}</code>. Sensores: vars <code>{{ name }}</code>, <code>{{ title }}</code>, <code>{{ state }}</code>, <code>{{ unit }}</code>, <code>{{ entity_id }}</code>. Audio: heredar / forzar / mudo + sonido LaMetric.</p>
           <p class="msg" id="autoMsg"></p>
         </form>
 
