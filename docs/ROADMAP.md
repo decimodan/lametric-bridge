@@ -21,5 +21,6 @@
 
 ## Next
 
+- PRODUCT-00011: Rename product to **Notifications Bridge** (brand-agnostic hub; Hue / Aqara later) — code/docs done, not deployed yet
 - Richer HA automation rules (templates / conditions beyond current thresholds)
 - Rotate panel password from default

@@ -2,13 +2,13 @@
 
 ## Role
 
-`lametric-bridge` is a LAN service that sits between local applications / Home Assistant and one or more pixel clocks (LaMetric Time and AWTRIX / Ulanzi TC001).
+**Notifications Bridge** (`notifications-bridge`) is a LAN notifications hub. Local apps and Home Assistant send events in; output adapters send them to devices. Today the outputs are pixel clocks (LaMetric Time and AWTRIX / Ulanzi TC001). Hue, Aqara, and other brands are expected later — ingest stays brand-agnostic.
 
 - Apps push notifications and persistent frames via REST + API key.
 - Home Assistant state changes map to notifications or frames, targeted at a specific clock or all clocks.
 - Frigate (and other LAN apps) post detection/events via webhook or `POST /api/v1/frigate`; panel Conexiones rules map them to alert cards.
-- The bridge pushes notifications to each clock's local API and exposes `/lametric/frames` for a LaMetric Indicator App.
-- Each clock has a unique `slug` (`lametric`, `ulanzi`, …) used in the panel, HA mappings, and `POST /api/v1/notify`.
+- Clock adapters push to each device's local API and expose `/lametric/frames` for a LaMetric Indicator App.
+- Each output device has a unique `slug` (`lametric`, `ulanzi`, …) used in the panel, HA mappings, and `POST /api/v1/notify`.
 
 ## Stack
 
@@ -26,7 +26,7 @@ src/
   db/                 # schema + secret helpers
   api/                # ingest + health + indicator frames
   panel/              # config UI + panel API
-  adapters/           # LaMetric + Home Assistant
+  adapters/           # output devices (LaMetric, AWTRIX) + Home Assistant
   services/           # apps, channels, queue, render
 ```
 
@@ -48,7 +48,7 @@ Persistent LaMetric channels write into `frames` and are served from `GET /lamet
 
 ## Deploy (Dokploy)
 
-Build from `Dockerfile`. Point `DATABASE_URL` at your existing Postgres (create an empty DB, e.g. `lametric_bridge`). Migrations run automatically on boot.
+Build from `Dockerfile`. Point `DATABASE_URL` at your existing Postgres (the live DB is still named `lametric_bridge`). Migrations run automatically on boot.
 
 Required environment variables:
 

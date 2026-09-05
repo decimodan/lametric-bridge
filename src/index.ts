@@ -6,6 +6,7 @@ import {
   startHomeAssistant,
   stopHomeAssistant,
 } from "./adapters/homeAssistant.js";
+import { PRODUCT_SLUG } from "./brand.js";
 import { config } from "./config.js";
 import { closeDb, dbDisplay, initDb } from "./db/index.js";
 import { syncEnvDevices, refreshAllDeviceHosts } from "./services/devices.js";
@@ -44,7 +45,7 @@ async function main(): Promise<void> {
 
   await app.listen({ port: config.port, host: "0.0.0.0" });
   app.log.info(
-    `lametric-bridge listening on :${config.port} (db=${dbDisplay()})`,
+    `${PRODUCT_SLUG} listening on :${config.port} (db=${dbDisplay()})`,
   );
 }
 

@@ -125,6 +125,11 @@ $$("#tabs button").forEach((btn) => {
 
 async function refreshStatus() {
   const s = await api("/panel/api/status");
+  if (s.product?.name) {
+    document.title = s.product.name;
+    const brandEl = $(".brand");
+    if (brandEl) brandEl.textContent = s.product.name;
+  }
   const devices = s.devices || [];
   const clocks = devices.map((d) => `${d.name} (${d.slug})`).join(", ") || "sin relojes";
   const ha = s.ha.configured
@@ -1206,7 +1211,7 @@ $("#notifyTest").addEventListener("click", async () => {
   try {
     const soundOn = $("#notifySoundCheck")?.checked;
     await sendNotify({
-      text: "Prueba lametric-bridge",
+      text: "Prueba Notifications Bridge",
       priority: "info",
       sound: soundOn
         ? String($("#notifySoundSelect")?.value || "notification")

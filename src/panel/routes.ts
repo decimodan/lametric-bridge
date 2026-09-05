@@ -26,6 +26,7 @@ import {
   testHaConnection,
   upsertHaEntity,
 } from "../adapters/homeAssistant.js";
+import { PRODUCT_NAME, PRODUCT_SLUG } from "../brand.js";
 import { config } from "../config.js";
 import {
   createApp,
@@ -126,6 +127,7 @@ function registerPanelApi(app: FastifyInstance): void {
     const apps = await listApps();
     const channels = await listChannels();
     return {
+      product: { name: PRODUCT_NAME, slug: PRODUCT_SLUG },
       devices: devices.map(publicDevice),
       ha: {
         ...status,

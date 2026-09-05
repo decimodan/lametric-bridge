@@ -1,4 +1,5 @@
 import { v4 as uuid } from "uuid";
+import { PRODUCT_NAME } from "../brand.js";
 import { query, type ChannelRow, type FrameRow } from "../db/index.js";
 import type { LametricFrame } from "./render.js";
 
@@ -92,7 +93,7 @@ export async function getIndicatorFrames(): Promise<{ frames: LametricFrame[] }>
   );
 
   if (res.rows.length === 0) {
-    return { frames: [{ text: "lametric-bridge", icon: "a2867" }] };
+    return { frames: [{ text: PRODUCT_NAME, icon: "a2867" }] };
   }
 
   return {

@@ -1,6 +1,6 @@
 # Integration guide
 
-Base URL example: `http://lametric-bridge:3000`
+Product: **Notifications Bridge**. Base URL example: `http://notifications-bridge:3000` (existing LAN deploy: `http://lametric.lan`).
 
 ## Authenticate
 
@@ -122,8 +122,8 @@ curl -X POST "$BRIDGE/api/v1/webhook" \
 
 ### Sentinel
 
-1. Create an app named `sentinel` in the bridge panel; copy the API key once.
-2. In Sentinel Dokploy `.env`:
+1. Create an app named `sentinel` in the Notifications Bridge panel; copy the API key once.
+2. In Sentinel Dokploy `.env` (that repo still uses these legacy names):
 
 ```env
 LAMETRIC_BRIDGE_URL=http://lametric.lan
@@ -238,3 +238,5 @@ No API key required (LAN only). Response shape:
 ```bash
 curl "$BRIDGE/api/v1/health"
 ```
+
+Response includes `service: "notifications-bridge"`.

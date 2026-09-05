@@ -54,11 +54,11 @@ body {
   backdrop-filter: blur(16px);
 }
 
-.brand-block { min-width: 12rem; }
+.brand-block { min-width: 14rem; }
 
 .brand {
   margin: 0;
-  font-size: 1.55rem;
+  font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -1257,6 +1257,7 @@ code {
 
 @media (max-width: 640px) {
   .top { padding: 1rem; }
+  .brand { font-size: 1.15rem; }
   .tabs {
     width: 100%;
     border-radius: var(--radius-sm);
