@@ -18,9 +18,9 @@
 - Sensores as IFTTT source — sensor cards (umbrales/intervalo) → alert card + reloj from Automatizaciones tab — deployed to `lametric.lan`
 - Home dashboard: three circular clock gauges on Relojes tab (brightness + status at a glance) — deployed to `lametric.lan`
 - MAC binding: clocks rediscover IP on LAN when MAC is configured — deployed to `lametric.lan`
+- PRODUCT-00011: Rename product to **Notifications Bridge** (brand-agnostic hub; Hue / Aqara later) — deployed to `lametric.lan`
 
 ## Next
 
-- PRODUCT-00011: Rename product to **Notifications Bridge** (brand-agnostic hub; Hue / Aqara later) — code/docs done, not deployed yet
 - Richer HA automation rules (templates / conditions beyond current thresholds)
 - Rotate panel password from default
