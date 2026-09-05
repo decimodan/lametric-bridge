@@ -9,6 +9,12 @@
 - GitHub repo renamed to `decimodan/notifications-bridge` (old URL redirects). Local folder is `notifications-bridge`.
 - Left unchanged on purpose (would break deploy or integrations): Postgres DB `lametric_bridge`, host `lametric.lan`, Dokploy project/app names, API key prefix `lb_`, `/lametric/frames`, device kind `lametric`, and `LAMETRIC_*` env vars. Sentinel still reads `LAMETRIC_BRIDGE_*`.
 
+## 2026-09-04 — `lametric.lan` DNS is AdGuard-only
+
+- Stopped publishing `lametric.lan` from the Asus GT-BE98 (`/etc/hosts`, `/jffs/lametric-dns.sh`, router dnsmasq). Dual answers (router + AdGuard) caused resolution problems.
+- The name stays on AdGuard Home only (`192.168.50.235`, rewrite → `192.168.50.230`). Dokploy Traefik host is unchanged.
+- Homelab: PRODUCT-00085 (`docs/asus-lan-dns.sh` forgets the name so infra cron cannot re-add it).
+
 ## 2026-08-25 — Frigate detections + alert audio (PRODUCT-00009)
 
 - Added Frigate to Conexiones catalog (`detection`, `person`, `car`, `dog`, `cat`, `package`).
