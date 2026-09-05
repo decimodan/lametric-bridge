@@ -1,7 +1,7 @@
 {
-  "name": "lametric-bridge",
+  "name": "notifications-bridge",
   "version": "1.0.0",
-  "description": "Bridge between local apps / Home Assistant and LaMetric / AWTRIX clocks",
+  "description": "LAN notifications hub for local apps, Home Assistant, and output devices (clocks today; more adapters later)",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -12,7 +12,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/decimodan/lametric-bridge.git"
+    "url": "git+https://github.com/decimodan/notifications-bridge.git"
   },
   "license": "ISC",
   "dependencies": {

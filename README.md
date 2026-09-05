@@ -1,6 +1,8 @@
-# lametric-bridge
+# Notifications Bridge
 
-Bridge entre aplicaciones locales / Home Assistant y relojes [LaMetric Time](https://lametric.com/) / [AWTRIX](https://blueforcer.github.io/awtrix-light/) (Ulanzi TC001).
+Hub de notificaciones en LAN: recibe eventos de apps locales / Home Assistant y los muestra en dispositivos de salida. Hoy son relojes [LaMetric Time](https://lametric.com/) y [AWTRIX](https://blueforcer.github.io/awtrix-light/) (Ulanzi TC001); el producto está pensado para sumar más marcas (Hue, Aqara, …).
+
+El repo y el servicio se llaman `notifications-bridge`. El deploy en LAN sigue usando el host `lametric.lan` y la base Postgres `lametric_bridge` para no romper Dokploy ni las integraciones.
 
 ## Qué hace
 
@@ -16,7 +18,7 @@ Bridge entre aplicaciones locales / Home Assistant y relojes [LaMetric Time](htt
 
 ```bash
 cp .env.example .env
-# set DATABASE_URL to your Postgres (create DB lametric_bridge first)
+# set DATABASE_URL to your Postgres (existing DB name: lametric_bridge)
 npm install
 npm run dev
 ```

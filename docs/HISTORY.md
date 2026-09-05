@@ -2,6 +2,13 @@
 
 # Decisions made
 
+## 2026-09-04 — Product rename to Notifications Bridge (PRODUCT-00011)
+
+- User-facing name is **Notifications Bridge** (`notifications-bridge`): the service is a LAN notifications hub, not a LaMetric-only app. Future outputs include Hue, Aqara, and other brands.
+- Renamed panel brand, package name, compose service, health `service` field, and docs. LaMetric remains one output adapter.
+- GitHub repo renamed to `decimodan/notifications-bridge` (old URL redirects). Local folder is `notifications-bridge`.
+- Left unchanged on purpose (would break deploy or integrations): Postgres DB `lametric_bridge`, host `lametric.lan`, Dokploy project/app names, API key prefix `lb_`, `/lametric/frames`, device kind `lametric`, and `LAMETRIC_*` env vars. Sentinel still reads `LAMETRIC_BRIDGE_*`.
+
 ## 2026-08-25 — Frigate detections + alert audio (PRODUCT-00009)
 
 - Added Frigate to Conexiones catalog (`detection`, `person`, `car`, `dog`, `cat`, `package`).

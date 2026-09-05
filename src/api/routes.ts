@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { PRODUCT_NAME, PRODUCT_SLUG } from "../brand.js";
 import { findAppByApiKey } from "../services/apps.js";
 import { getCard, listCards, publicCard, resolveCardSound } from "../services/cards.js";
 import {
@@ -95,7 +96,8 @@ export async function registerApiRoutes(app: FastifyInstance): Promise<void> {
     const devices = await listDevices();
     return {
       ok: true,
-      service: "lametric-bridge",
+      service: PRODUCT_SLUG,
+      name: PRODUCT_NAME,
       queue: queueSize(),
       devices: devices.map(publicDevice),
       ts: new Date().toISOString(),
